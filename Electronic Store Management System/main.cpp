@@ -5,7 +5,7 @@
 #include "Admin.h"
 #include "Customer.h"
 #include <cstdlib>
-
+#include "Utility.h"
 #include "Product.h"
 
 #include "Order.h"
@@ -59,13 +59,13 @@ int main()
 
     do
     {
-        cout << "\n=====================================\n";
+        cout << "=====================================\n";
         cout << " Electronic Store Management System\n";
         cout << "=====================================\n";
 
         cout << "1. Customer Management\n";
         cout << "2. Product Management\n";
-        cout << "3. ORDER Management\n";
+        cout << "3. Order Management\n";
         cout << "4. Sales Management\n";
         cout << "5. Report Management\n";
         cout << "6. Logout\n";
@@ -95,22 +95,27 @@ int main()
         {
         case 1:
             customerManagementMenu(con);
+            clearScreen();
             break;
 
         case 2:
             productManagementMenu(con);
+            clearScreen();
             break;
         case 3:
             orderManagementMenu(con);
+            clearScreen();
             break;
             /*
 
         case 4:
             salesManagementMenu(con);
+             clearScreen();
             break;
 
         case 5:
             reportManagementMenu(con);
+             clearScreen();
             break;
 */
         case 6:
