@@ -72,10 +72,64 @@ bool isValidContact(string contact)
     regex pattern("^[0-9]+$");
     return regex_match(contact, pattern);
 }
+
+
+// =====================================
+// display Customer List
+// =====================================
+
+void displayCustomerList(sql::Connection* con)
+{
+    try
+    {
+        sql::Statement* stmt;
+        sql::ResultSet* res;
+
+        stmt = con->createStatement();
+
+        res = stmt->executeQuery(
+            "SELECT CustomerID, CustomerName "
+            "FROM CUSTOMER "
+            "WHERE Status='ACTIVE' "
+            "ORDER BY CustomerID"
+        );
+
+        cout << "\n";
+        cout << "----------------------------------------\n";
+        cout << left
+            << setw(10) << "ID"
+            << setw(25) << "Customer Name"
+            << endl;
+
+        cout << "----------------------------------------\n";
+
+        while (res->next())
+        {
+            cout << left
+                << setw(10) << res->getString("CustomerID")
+                << setw(25) << res->getString("CustomerName")
+                << endl;
+        }
+
+        cout << "----------------------------------------\n";
+
+        delete res;
+        delete stmt;
+    }
+    catch (sql::SQLException& e)
+    {
+        cout << "\nError: "
+            << e.what()
+            << endl;
+    }
+}
+
+
+
+
 // =====================================
 // Add Customer
 // =====================================
-
 
 
 void addCustomer(sql::Connection* con)
@@ -155,7 +209,13 @@ void addCustomer(sql::Connection* con)
     {
         cout << "\nError: " << e.what() << endl;
     }
-}// =====================================
+}
+
+
+// =====================================
+
+
+// =====================================
 // View Customers
 // =====================================
 void viewCustomers(sql::Connection* con)
@@ -168,10 +228,13 @@ void viewCustomers(sql::Connection* con)
         stmt = con->createStatement();
 
         res = stmt->executeQuery(
-            "SELECT * FROM CUSTOMER"
+            "SELECT * FROM CUSTOMER "
+            "WHERE Status='ACTIVE' "
+            "ORDER BY CustomerID"
         );
 
         cout << "\n========================================================================================================\n";
+
         cout << left
             << setw(8) << "ID"
             << setw(25) << "Name"
@@ -198,14 +261,19 @@ void viewCustomers(sql::Connection* con)
         }
 
         cout << "========================================================================================================\n";
-        cout << "Total Customers: " << count << endl;
+
+        cout << "Total Customers: "
+            << count
+            << endl;
 
         delete res;
         delete stmt;
     }
     catch (sql::SQLException& e)
     {
-        cout << "\nError: " << e.what() << endl;
+        cout << "\nError: "
+            << e.what()
+            << endl;
     }
 }
 // =====================================
@@ -214,6 +282,11 @@ void viewCustomers(sql::Connection* con)
 void updateCustomer(sql::Connection* con)
 {
     string customerID;
+
+
+    displayHeader("UPDATE CUSTOMER");
+
+    displayCustomerList(con);
 
     cout << "\nEnter Customer ID (C001): ";
     cin >> customerID;
@@ -337,6 +410,10 @@ void deleteCustomer(sql::Connection* con)
     string customerID;
     char confirm;
 
+    displayHeader("DELETE CUSTOMER");
+
+    displayCustomerList(con);
+
     cout << "\nEnter Customer ID: ";
     cin >> customerID;
 
@@ -347,10 +424,11 @@ void deleteCustomer(sql::Connection* con)
 
         pstmt = con->prepareStatement(
             "SELECT * FROM CUSTOMER "
-            "WHERE CustomerID=?"
+            "WHERE CustomerID=? AND Status='ACTIVE'"
         );
 
-pstmt->setString(1, customerID);
+        pstmt->setString(1, customerID);
+
         res = pstmt->executeQuery();
 
         if (!res->next())
@@ -375,20 +453,121 @@ pstmt->setString(1, customerID);
         }
 
         pstmt = con->prepareStatement(
-            "DELETE FROM CUSTOMER "
+            "UPDATE CUSTOMER "
+            "SET Status='INACTIVE' "
             "WHERE CustomerID=?"
         );
 
         pstmt->setString(1, customerID);
         pstmt->executeUpdate();
 
-        cout << "\nCustomer deleted successfully!\n";
+        cout << "\nCustomer deactivated successfully!\n";
 
         delete pstmt;
     }
     catch (sql::SQLException& e)
     {
         cout << "\nError: " << e.what() << endl;
+    }
+}
+
+// =====================================
+// Restore Customer
+// =====================================
+void restoreCustomer(sql::Connection* con)
+{
+    clearScreen();
+    displayHeader("RESTORE CUSTOMER");
+    string customerID;
+    char confirm;
+
+    cout << "\nEnter Customer ID: ";
+    cin >> customerID;
+
+    try
+    {
+        sql::PreparedStatement* pstmt;
+        sql::ResultSet* res;
+
+        pstmt = con->prepareStatement(
+            "SELECT * FROM CUSTOMER "
+            "WHERE CustomerID=? "
+            "AND Status='INACTIVE'"
+        );
+
+        pstmt->setString(1, customerID);
+
+        res = pstmt->executeQuery();
+
+        if (!res->next())
+        {
+            cout << "\nInactive customer not found!\n";
+
+            delete res;
+            delete pstmt;
+
+            return;
+        }
+
+        cout << "\n--------------------------------------------------\n";
+
+        cout << "Customer ID : "
+            << res->getString("CustomerID")
+            << endl;
+
+        cout << "Name        : "
+            << res->getString("CustomerName")
+            << endl;
+
+        cout << "Email       : "
+            << res->getString("Email")
+            << endl;
+
+        cout << "Contact No  : "
+            << res->getString("ContactNo")
+            << endl;
+
+        cout << "Address     : "
+            << res->getString("Address")
+            << endl;
+
+        cout << "Status      : "
+            << res->getString("Status")
+            << endl;
+
+        cout << "--------------------------------------------------\n";
+        delete res;
+        delete pstmt;
+
+        cout << "\n\nRestore this customer? (Y/N): ";
+        cin >> confirm;
+
+        if (toupper(confirm) != 'Y')
+        {
+            cout << "\nRestore cancelled.\n";
+
+            return;
+        }
+
+        pstmt = con->prepareStatement(
+            "UPDATE CUSTOMER "
+            "SET Status='ACTIVE' "
+            "WHERE CustomerID=?"
+        );
+
+        pstmt->setString(1, customerID);
+
+        pstmt->executeUpdate();
+
+        cout << "\nCustomer restored successfully!\n";
+
+        delete pstmt;
+    }
+    catch (sql::SQLException& e)
+    {
+        cout << "\nError: "
+            << e.what()
+            << endl;
     }
 }
 
@@ -408,8 +587,9 @@ void customerManagementMenu(sql::Connection* con)
         cout << "1. Add Customer\n";
         cout << "2. Update Customer\n";
         cout << "3. Delete Customer\n";
-        cout << "4. View Customer\n";
-        cout << "5. Back\n";
+        cout << "4. Restore Customer\n";
+        cout << "5. View Customer\n";
+        cout << "6. Back\n";
 
         cout << "\nEnter Choice: ";
         cin >> choice;
@@ -466,6 +646,12 @@ void customerManagementMenu(sql::Connection* con)
 
         case 4:
 
+            restoreCustomer(con);
+
+            break;
+
+        case 5:
+
             clearScreen();
 
             viewCustomers(con);
@@ -476,7 +662,7 @@ void customerManagementMenu(sql::Connection* con)
 
             break;
 
-        case 5:
+        case 6:
             cout << "\nReturning to Main Menu...\n";
             loadingScreen();
 

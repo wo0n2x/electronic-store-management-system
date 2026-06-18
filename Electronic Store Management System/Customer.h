@@ -6,4 +6,7 @@
 
 void customerManagementMenu(sql::Connection* con);
 
+void restoreCustomer(sql::Connection* con);
+
+void displayCustomerList(sql::Connection* con); 
 #endif
