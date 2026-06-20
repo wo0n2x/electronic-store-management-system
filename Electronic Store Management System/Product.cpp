@@ -57,6 +57,81 @@ string generateProductID(sql::Connection* con)
     return newID;
 }
 
+// =====================================
+// View Inactive Products
+// =====================================
+
+void viewInactiveProducts(sql::Connection* con)
+{
+    try
+    {
+        sql::Statement* stmt;
+        sql::ResultSet* res;
+
+        stmt = con->createStatement();
+
+        res = stmt->executeQuery(
+            "SELECT ProductID, ProductName "
+            "FROM PRODUCT "
+            "WHERE Status='INACTIVE' "
+            "ORDER BY ProductID"
+        );
+
+        cout << "\n";
+
+        margin();
+        cout << "============================================================\n";
+
+        margin();
+        cout << "INACTIVE PRODUCT LIST\n";
+
+        margin();
+        cout << "============================================================\n";
+
+        margin();
+        cout << left
+            << setw(15) << "PRODUCT ID"
+            << setw(35) << "PRODUCT NAME"
+            << endl;
+
+        margin();
+        cout << "============================================================\n";
+
+        int count = 0;
+
+        while (res->next())
+        {
+            margin();
+
+            cout << left
+                << setw(15) << res->getString("ProductID")
+                << setw(35) << res->getString("ProductName")
+                << endl;
+
+            count++;
+        }
+
+        margin();
+        cout << "============================================================\n";
+
+        margin();
+        cout << "Total Inactive Products : "
+            << count
+            << endl;
+
+        delete res;
+        delete stmt;
+    }
+    catch (sql::SQLException& e)
+    {
+        margin();
+
+        cout << "\n[ERROR] "
+            << e.what()
+            << endl;
+    }
+}
+
 //display Categories
 void displayCategories(sql::Connection* con)
 {
@@ -637,13 +712,18 @@ void deleteProduct(sql::Connection* con)
 {
     string productID;
 
-    cout << "\n==================================================\n";
-    cout << "                DELETE PRODUCT\n";
-    cout << "==================================================\n";
+    displayHeader("DELETE PRODUCT");
+    displayPath("HOME > PRODUCT MANAGEMENT > DELETE PRODUCT");
 
-    cout << "\nEnter Product ID : ";
+    viewProducts(con);
+
+    cout << "\n";
+
+    margin();
+    cout << "Enter Product ID : ";
+
     cin >> productID;
-
+    viewProducts(con);
     try
     {
         sql::PreparedStatement* pstmt;
@@ -693,38 +773,55 @@ void deleteProduct(sql::Connection* con)
         cout << "                DELETE PRODUCT\n";
         cout << "==================================================\n\n";
 
-        cout << " Product ID     : "
-            << productID << endl;
+        margin();
+        cout << "Product ID     : "
+            << productID
+            << endl;
 
-        cout << " Product Name   : "
-            << productName << endl;
+        margin();
+        cout << "Product Name   : "
+            << productName
+            << endl;
 
-        cout << " Brand          : "
-            << brand << endl;
+        margin();
+        cout << "Brand          : "
+            << brand
+            << endl;
 
-        cout << " Price          : RM "
+        margin();
+        cout << "Price          : RM "
             << fixed << setprecision(2)
-            << price << endl;
+            << price
+            << endl;
 
-        cout << " Stock Quantity : "
-            << stockQty << endl;
+        margin();
+        cout << "Stock Quantity : "
+            << stockQty
+            << endl;
 
-        cout << " Category ID    : "
-            << categoryID << endl;
-
+        margin();
+        cout << "Category ID    : "
+            << categoryID
+            << endl;
         cout << "\n==================================================\n";
 
-        cout << "\nWARNING:\n";
-        cout << "This product will become INACTIVE.\n";
-        cout << "It will no longer appear in the system.\n";
+        cout << "\n";
 
+        margin();
+        cout << "[WARNING] This product will become INACTIVE.\n";
+
+        margin();
+        cout << "It will no longer appear in active products.\n";
         char confirm;
 
+        margin();
         cout << "\nDeactivate this product? (Y/N): ";
         cin >> confirm;
 
         if (toupper(confirm) != 'Y')
         {
+            margin();
+
             cout << "\nOperation cancelled.\n";
             return;
         }
@@ -753,16 +850,23 @@ void deleteProduct(sql::Connection* con)
     }
 }
 
-//Restore Products
+// =====================================
+// Restore Product
+// =====================================
+
 void restoreProduct(sql::Connection* con)
 {
     string productID;
 
-    cout << "\n==================================================\n";
-    cout << "               RESTORE PRODUCT\n";
-    cout << "==================================================\n";
+    displayHeader("RESTORE PRODUCT");
+    displayPath("HOME > PRODUCT MANAGEMENT > RESTORE PRODUCT");
 
-    cout << "\nEnter Product ID : ";
+    viewInactiveProducts(con);
+
+    cout << "\n";
+
+    margin();
+    cout << "Enter Product ID : ";
     cin >> productID;
 
     try
@@ -782,7 +886,8 @@ void restoreProduct(sql::Connection* con)
 
         if (!res->next())
         {
-            cout << "\nInactive product not found!\n";
+            margin();
+            cout << "[ERROR] Inactive product not found!\n";
 
             delete res;
             delete pstmt;
@@ -799,38 +904,78 @@ void restoreProduct(sql::Connection* con)
         double price =
             res->getDouble("Price");
 
+        int stockQty =
+            res->getInt("StockQuantity");
+
+        int categoryID =
+            res->getInt("CategoryID");
+
         delete res;
         delete pstmt;
 
         clearScreen();
 
-        cout << "==================================================\n";
-        cout << "               PRODUCT RECOVERY\n";
-        cout << "==================================================\n\n";
+        displayHeader("PRODUCT RECOVERY");
+        displayPath("HOME > PRODUCT MANAGEMENT > RESTORE PRODUCT");
 
-        cout << " Product ID   : "
-            << productID << endl;
+        cout << "\n";
 
-        cout << " Product Name : "
-            << productName << endl;
+        margin();
+        cout << "============================================================\n";
 
-        cout << " Brand        : "
-            << brand << endl;
+        margin();
+        cout << "Product Information\n";
 
-        cout << " Price        : RM "
+        margin();
+        cout << "============================================================\n";
+
+        margin();
+        cout << "Product ID     : "
+            << productID
+            << endl;
+
+        margin();
+        cout << "Product Name   : "
+            << productName
+            << endl;
+
+        margin();
+        cout << "Brand          : "
+            << brand
+            << endl;
+
+        margin();
+        cout << "Price          : RM "
             << fixed << setprecision(2)
-            << price << endl;
+            << price
+            << endl;
 
-        cout << "\n==================================================\n";
+        margin();
+        cout << "Stock Quantity : "
+            << stockQty
+            << endl;
+
+        margin();
+        cout << "Category ID    : "
+            << categoryID
+            << endl;
+
+        margin();
+        cout << "============================================================\n";
 
         char confirm;
 
-        cout << "\nRestore this product? (Y/N): ";
+        cout << "\n";
+
+        margin();
+        cout << "Restore this product? (Y/N): ";
         cin >> confirm;
 
         if (toupper(confirm) != 'Y')
         {
-            cout << "\nOperation cancelled.\n";
+            margin();
+            cout << "\n[INFO] Operation cancelled.\n";
+
             return;
         }
 
@@ -846,18 +991,20 @@ void restoreProduct(sql::Connection* con)
 
         delete pstmt;
 
-        cout << "\n========================================\n";
-        cout << "   PRODUCT RESTORED SUCCESSFULLY\n";
-        cout << "========================================\n";
+        cout << "\n";
+
+        margin();
+        cout << "[SUCCESS] Product restored successfully!\n";
     }
     catch (sql::SQLException& e)
     {
-        cout << "\nDatabase Error : "
+        margin();
+
+        cout << "\n[ERROR] "
             << e.what()
             << endl;
     }
 }
-
 //search Products
 void searchProduct(sql::Connection* con)
 {

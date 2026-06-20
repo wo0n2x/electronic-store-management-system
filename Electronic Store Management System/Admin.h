@@ -6,5 +6,5 @@ using namespace std;
 
 bool login(sql::Connection* con);
 string getPassword();
-
+extern bool isAdmin;
 #endif

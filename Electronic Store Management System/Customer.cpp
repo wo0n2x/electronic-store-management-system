@@ -95,35 +95,40 @@ void displayCustomerList(sql::Connection* con)
         );
 
         cout << "\n";
-        cout << "----------------------------------------\n";
+
+        margin();
+        cout << "====================================================\n";
+
+        margin();
         cout << left
-            << setw(10) << "ID"
-            << setw(25) << "Customer Name"
+            << setw(12) << "ID"
+            << setw(30) << "Customer Name"
             << endl;
 
-        cout << "----------------------------------------\n";
+        margin();
+        cout << "====================================================\n";
 
         while (res->next())
         {
+            margin();
+
             cout << left
                 << setw(10) << res->getString("CustomerID")
                 << setw(25) << res->getString("CustomerName")
                 << endl;
         }
 
-        cout << "----------------------------------------\n";
+        margin();
+        cout << "====================================================\n";
 
         delete res;
         delete stmt;
     }
     catch (sql::SQLException& e)
     {
-        cout << "\nError: "
-            << e.what()
-            << endl;
+        cout << "\nError: " << e.what() << endl;
     }
 }
-
 
 
 
@@ -283,12 +288,13 @@ void updateCustomer(sql::Connection* con)
 {
     string customerID;
 
-
     displayHeader("UPDATE CUSTOMER");
 
     displayCustomerList(con);
 
-    cout << "\nEnter Customer ID (C001): ";
+    cout << "\n";
+    margin();
+    cout << "Enter Customer ID (CXXX): ";
     cin >> customerID;
 
     try
@@ -297,7 +303,9 @@ void updateCustomer(sql::Connection* con)
         sql::ResultSet* res;
 
         pstmt = con->prepareStatement(
-            "SELECT * FROM CUSTOMER WHERE CustomerID=?"
+            "SELECT * FROM CUSTOMER "
+            "WHERE CustomerID=? "
+            "AND Status='ACTIVE'"
         );
 
         pstmt->setString(1, customerID);
@@ -310,86 +318,95 @@ void updateCustomer(sql::Connection* con)
 
             delete res;
             delete pstmt;
+
             return;
         }
 
-        cout << "\nCurrent Customer Information\n";
+        string currentName =
+            res->getString("CustomerName");
+
+        string currentEmail =
+            res->getString("Email");
+
+        string currentContact =
+            res->getString("ContactNo");
+
+        string currentAddress =
+            res->getString("Address");
+
+        cout << "\nCurrent Customer Information\n\n";
 
         cout << "Name    : "
-            << res->getString("CustomerName") << endl;
+            << currentName << endl;
 
         cout << "Email   : "
-            << res->getString("Email") << endl;
+            << currentEmail << endl;
 
         cout << "Contact : "
-            << res->getString("ContactNo") << endl;
+            << currentContact << endl;
 
         cout << "Address : "
-            << res->getString("Address") << endl;
+            << currentAddress << endl;
 
         delete res;
         delete pstmt;
 
-        string name, email, contact, address;
+        string contact, address;
 
         cin.ignore();
 
-        // New Name
-        cout << "\nEnter New Name: ";
-        getline(cin, name);
+        cout << "\nCustomer Name : "
+            << currentName
+            << " (READ ONLY)\n";
 
-        while (!isValidName(name))
-        {
-            cout << "\nInvalid name!";
-            cout << "\nName must contain letters only.\n";
+        cout << "Email         : "
+            << currentEmail
+            << " (READ ONLY)\n";
 
-            cout << "Enter New Name: ";
-            getline(cin, name);
-        }
+        cout << "\nCurrent Contact : "
+            << currentContact
+            << endl;
 
-        // New Email
-        cout << "Enter New Email: ";
-        getline(cin, email);
-
-        while (!isValidEmail(email))
-        {
-            cout << "\nInvalid email format!\n";
-
-            cout << "Enter New Email: ";
-            getline(cin, email);
-        }
-
-        // New Contact
-        cout << "Enter New Contact: ";
+        cout << "New Contact (Press Enter to keep current): ";
         getline(cin, contact);
 
-        while (!isValidContact(contact))
+        if (contact.empty())
         {
-            cout << "\nInvalid contact number!";
-            cout << "\nNumbers only.\n";
+            contact = currentContact;
+        }
+        else
+        {
+            while (!isValidContact(contact))
+            {
+                cout << "\nInvalid contact number!";
+                cout << "\nNumbers only.\n";
 
-            cout << "Enter New Contact: ";
-            getline(cin, contact);
+                cout << "New Contact: ";
+                getline(cin, contact);
+            }
         }
 
-        // New Address
-        cout << "Enter New Address: ";
+        cout << "\nCurrent Address : "
+            << currentAddress
+            << endl;
+
+        cout << "New Address (Press Enter to keep current): ";
         getline(cin, address);
 
+        if (address.empty())
+        {
+            address = currentAddress;
+        }
         pstmt = con->prepareStatement(
             "UPDATE CUSTOMER "
-            "SET CustomerName=?, "
-            "Email=?, "
-            "ContactNo=?, "
+            "SET ContactNo=?, "
             "Address=? "
             "WHERE CustomerID=?"
         );
 
-        pstmt->setString(1, name);
-        pstmt->setString(2, email);
-        pstmt->setString(3, contact);
-        pstmt->setString(4, address);
-        pstmt->setString(5, customerID);
+        pstmt->setString(1, contact);
+        pstmt->setString(2, address);
+        pstmt->setString(3, customerID);
 
         pstmt->executeUpdate();
 
@@ -399,7 +416,9 @@ void updateCustomer(sql::Connection* con)
     }
     catch (sql::SQLException& e)
     {
-        cout << "\nError: " << e.what() << endl;
+        cout << "\nError: "
+            << e.what()
+            << endl;
     }
 }
 // =====================================
@@ -581,17 +600,26 @@ void customerManagementMenu(sql::Connection* con)
 
     do
     {
+        margin();
         cout << "========================================\n";
+        margin();
         cout << "         CUSTOMER MANAGEMENT\n";
+        margin();
         cout << "========================================\n";
+        margin();
         cout << "1. Add Customer\n";
+        margin();
         cout << "2. Update Customer\n";
+        margin();
         cout << "3. Delete Customer\n";
+        margin();
         cout << "4. Restore Customer\n";
+        margin();
         cout << "5. View Customer\n";
-        cout << "6. Back\n";
-
-        cout << "\nEnter Choice: ";
+		margin();
+        cout << "6. Back\n\n";
+        margin();
+        cout << "Enter Choice:\n ";
         cin >> choice;
 
         if (cin.fail())
@@ -599,7 +627,8 @@ void customerManagementMenu(sql::Connection* con)
             cin.clear();
             cin.ignore(1000, '\n');
 
-            cout << "\nInvalid choice!\n";
+            margin();
+            cout << "Invalid choice!\n";
 
             pauseScreen();
             clearScreen();

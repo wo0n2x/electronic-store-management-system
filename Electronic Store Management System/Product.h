@@ -5,4 +5,5 @@
 
 void productManagementMenu(sql::Connection* con);
 
+void viewInactiveProducts(sql::Connection* con);
 #endif

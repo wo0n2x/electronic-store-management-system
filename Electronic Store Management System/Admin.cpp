@@ -11,6 +11,9 @@
 
 using namespace std;
 
+extern bool isAdmin;
+bool isAdmin = false;
+
 // =====================================
 // Password Input
 // =====================================
@@ -49,21 +52,20 @@ bool login(sql::Connection* con)
     string password;
 
     clearScreen();
+    displayHeader("ELECTRONIC STORE MANAGEMENT SYSTEM");
 
-    cout << "==========================================================\n";
-    cout << "         ELECTRONIC STORE MANAGEMENT SYSTEM\n";
-    cout << "==========================================================\n\n";
-
-    cout << "                 ADMINISTRATOR LOGIN\n\n";
-
+    margin();
+    cout << "                   SYSTEM LOGIN\n\n";
+    margin();
     cout << "Database Status : CONNECTED\n";
+    margin();
     cout << "System Status   : READY\n\n";
-
+    margin();
     cout << "----------------------------------------------------------\n\n";
-
+    margin();
     cout << "Admin ID / Email : ";
     cin >> loginInput;
-
+    margin();
     cout << "Password         : ";
     password = getPassword();
 
@@ -86,7 +88,10 @@ bool login(sql::Connection* con)
 
         if (res->next())
         {
-            string adminName = res->getString("AdminName");
+            isAdmin = true;
+
+            string adminName =
+                res->getString("AdminName");
 
             delete res;
             delete pstmt;
@@ -98,6 +103,47 @@ bool login(sql::Connection* con)
             cout << "==========================================================\n\n";
 
             cout << "Welcome " << adminName << "!\n\n";
+
+            loadingScreen();
+
+            return true;
+        }
+
+        delete res;
+        delete pstmt;
+
+
+        pstmt = con->prepareStatement(
+            "SELECT * FROM STAFF "
+            "WHERE (StaffID=? OR Email=?) "
+            "AND Password=? "
+            "AND Status='ACTIVE'"
+        );
+
+        pstmt->setString(1, loginInput);
+        pstmt->setString(2, loginInput);
+        pstmt->setString(3, password);
+
+        res = pstmt->executeQuery();
+
+        if (res->next())
+        {
+            isAdmin = false;
+
+            string staffName =
+                res->getString("StaffName");
+
+            delete res;
+            delete pstmt;
+
+            clearScreen();
+
+            displayHeader("ACCESS GRANTED");
+
+            margin();
+            cout << "Welcome "
+                << staffName
+                << "!\n\n";
 
             loadingScreen();
 
