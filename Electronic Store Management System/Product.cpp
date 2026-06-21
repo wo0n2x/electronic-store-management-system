@@ -99,8 +99,7 @@ namespace
 
     void printLine(int width = PRODUCT_TABLE_WIDTH)
     {
-        margin();
-        cout << string(width, '-') << endl;
+        printTableLine(width);
     }
 
     void printPrompt(string prompt)
@@ -498,6 +497,7 @@ namespace
         displaySection(title);
 
         margin();
+        setTableHeaderColor();
         cout << left
             << setw(10) << "ID"
             << setw(28) << "Product Name"
@@ -506,6 +506,7 @@ namespace
             << setw(10) << "Stock"
             << setw(22) << "Category"
             << endl;
+        resetTextColor();
 
         printLine();
     }
@@ -550,10 +551,12 @@ namespace
         displaySection("INACTIVE PRODUCTS");
 
         margin();
+        setTableHeaderColor();
         cout << left
             << setw(15) << "Product ID"
             << setw(40) << "Product Name"
             << endl;
+        resetTextColor();
 
         printLine(INACTIVE_PRODUCT_TABLE_WIDTH);
     }
@@ -883,14 +886,15 @@ namespace
         displaySection("PRODUCT CHANGES");
 
         margin();
+        setTableHeaderColor();
         cout << left
             << setw(20) << "Field"
             << setw(32) << "Old Value"
             << setw(32) << "New Value"
             << endl;
+        resetTextColor();
 
-        margin();
-        cout << string(84, '-') << endl;
+        printTableLine(84);
 
         int changeCount = 0;
 

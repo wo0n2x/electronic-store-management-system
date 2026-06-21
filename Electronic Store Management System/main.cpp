@@ -56,6 +56,8 @@ int main()
 
     do
     {
+        clearScreen();
+
         displayHeader("ELECTRONIC STORE MANAGEMENT SYSTEM");
 
         margin();

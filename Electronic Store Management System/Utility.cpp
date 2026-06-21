@@ -135,6 +135,61 @@ void resetTextColor()
     );
 }
 
+void setHeaderColor()
+{
+    setTextColor(CYAN);
+}
+
+void setSectionColor()
+{
+    setTextColor(WHITE);
+}
+
+void setTableHeaderColor()
+{
+    setTextColor(YELLOW);
+}
+
+void setSuccessColor()
+{
+    setTextColor(GREEN);
+}
+
+void setErrorColor()
+{
+    setTextColor(RED);
+}
+
+void setWarningColor()
+{
+    setTextColor(YELLOW);
+}
+
+void setInfoColor()
+{
+    setTextColor(BLUE);
+}
+
+void setStatusColor(string status)
+{
+    if (status == "COMPLETED" || status == "ACTIVE")
+    {
+        setSuccessColor();
+    }
+    else if (status == "PENDING")
+    {
+        setWarningColor();
+    }
+    else if (status == "CANCELLED" || status == "INACTIVE")
+    {
+        setErrorColor();
+    }
+    else
+    {
+        setInfoColor();
+    }
+}
+
 int getConsoleWidth()
 {
     CONSOLE_SCREEN_BUFFER_INFO info;
@@ -162,18 +217,71 @@ void margin()
     cout << string(spaces, ' ');
 }
 
+void printSuccess(string message)
+{
+    setSuccessColor();
+    cout << "[SUCCESS] ";
+    resetTextColor();
+    cout << message << endl;
+}
+
+void printError(string message)
+{
+    setErrorColor();
+    cout << "[ERROR] ";
+    resetTextColor();
+    cout << message << endl;
+}
+
+void printWarning(string message)
+{
+    setWarningColor();
+    cout << "[WARNING] ";
+    resetTextColor();
+    cout << message << endl;
+}
+
+void printInfo(string message)
+{
+    setInfoColor();
+    cout << "[INFO] ";
+    resetTextColor();
+    cout << message << endl;
+}
+
+void printStatus(string status)
+{
+    setStatusColor(status);
+    cout << status;
+    resetTextColor();
+}
+
+void printTableLine(int width)
+{
+    margin();
+    setTableHeaderColor();
+    cout << string(width, '-') << endl;
+    resetTextColor();
+}
+
 void displayHeader(string title)
 {
     title = trimText(title);
 
     margin();
-    printColored(CYAN, HEADER_LINE + "\n");
+    setHeaderColor();
+    cout << HEADER_LINE << "\n";
+    resetTextColor();
 
     margin();
-    printColored(WHITE, centeredText(title, CONTENT_WIDTH) + "\n");
+    setHeaderColor();
+    cout << centeredText(title, CONTENT_WIDTH) << "\n";
+    resetTextColor();
 
     margin();
-    printColored(CYAN, HEADER_LINE + "\n");
+    setHeaderColor();
+    cout << HEADER_LINE << "\n";
+    resetTextColor();
 }
 
 void displaySection(string title)
@@ -181,13 +289,19 @@ void displaySection(string title)
     title = trimText(title);
 
     margin();
-    printColored(YELLOW, SECTION_LINE + "\n");
+    setSectionColor();
+    cout << SECTION_LINE << "\n";
+    resetTextColor();
 
     margin();
-    printColored(WHITE, centeredText(title, CONTENT_WIDTH) + "\n");
+    setSectionColor();
+    cout << centeredText(title, CONTENT_WIDTH) << "\n";
+    resetTextColor();
 
     margin();
-    printColored(YELLOW, SECTION_LINE + "\n");
+    setSectionColor();
+    cout << SECTION_LINE << "\n";
+    resetTextColor();
 }
 
 void displaySuccess(string message)
@@ -196,10 +310,7 @@ void displaySuccess(string message)
 
     margin();
 
-    printColored(GREEN, "[SUCCESS] ");
-
-    cout << message
-        << endl;
+    printSuccess(message);
 }
 
 void displayError(string message)
@@ -208,19 +319,20 @@ void displayError(string message)
 
     margin();
 
-    printColored(RED, "[ERROR] ");
-
-    cout << message
-        << endl;
+    printError(message);
 }
 
 void displayPath(string path)
 {
     margin();
-    printColored(DARK_GRAY, path + "\n");
+    setTextColor(DARK_GRAY);
+    cout << path << "\n";
+    resetTextColor();
 
     margin();
-    printColored(YELLOW, SECTION_LINE + "\n");
+    setHeaderColor();
+    cout << SECTION_LINE << "\n";
+    resetTextColor();
 }
 
 void loadingScreen()
@@ -274,18 +386,12 @@ void displayInfo(string message)
 {
     cout << "\n";
     margin();
-    setTextColor(CYAN);
-    cout << "[INFO] ";
-    resetTextColor();
-    cout << message << endl;
+    printInfo(message);
 }
 
 void displayWarning(string message)
 {
     cout << "\n";
     margin();
-    setTextColor(YELLOW);
-    cout << "[WARNING] ";
-    resetTextColor();
-    cout << message << endl;
+    printWarning(message);
 }

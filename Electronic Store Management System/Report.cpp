@@ -118,6 +118,45 @@ namespace
         char symbol = 'A';
     };
 
+    ConsoleColor chartColor(int index)
+    {
+        switch (index % 4)
+        {
+        case 0:
+            return GREEN;
+
+        case 1:
+            return CYAN;
+
+        case 2:
+            return YELLOW;
+
+        default:
+            return BLUE;
+        }
+    }
+
+    ConsoleColor sliceColor(char symbol)
+    {
+        switch (symbol)
+        {
+        case 'A':
+            return GREEN;
+
+        case 'B':
+            return CYAN;
+
+        case 'C':
+            return YELLOW;
+
+        case 'D':
+            return BLUE;
+
+        default:
+            return WHITE;
+        }
+    }
+
     void discardLine()
     {
         cin.ignore(
@@ -184,8 +223,7 @@ namespace
 
     void printLine(int width)
     {
-        margin();
-        cout << string(width, '-') << endl;
+        printTableLine(width);
     }
 
     bool readChoice(
@@ -242,9 +280,11 @@ namespace
             margin();
             cout << left
                 << setw(28) << metric.label
-                << ": "
-                << metric.value
-                << endl;
+                << ": ";
+            setSuccessColor();
+            cout << metric.value;
+            resetTextColor();
+            cout << endl;
         }
 
         cout << "\n";
@@ -253,6 +293,7 @@ namespace
     void printTableTitle(string title)
     {
         displaySection(title);
+        setTableHeaderColor();
     }
 
     void printVisualizationTitle(string title)
@@ -262,8 +303,7 @@ namespace
         margin();
         cout << title << endl;
 
-        margin();
-        cout << string(58, '-') << endl;
+        printTableLine(58);
     }
 
     void printBarChart(
@@ -281,6 +321,7 @@ namespace
         }
 
         double maxValue = 0;
+        double totalValue = 0;
 
         for (const auto& item : values)
         {
@@ -288,6 +329,8 @@ namespace
             {
                 maxValue = item.second;
             }
+
+            totalValue += item.second;
         }
 
         if (maxValue <= 0)
@@ -295,6 +338,8 @@ namespace
             displayInfo("Chart cannot be generated because all values are zero.");
             return;
         }
+
+        int chartIndex = 0;
 
         for (const auto& item : values)
         {
@@ -307,14 +352,31 @@ namespace
                 length = 1;
             }
 
+            double percentage =
+                totalValue > 0 ? (item.second / totalValue) * 100 : 0;
+
+            string bar =
+                string(length, '#') +
+                string(BAR_WIDTH - length, ' ');
+
             margin();
             cout << left
                 << setw(22) << fitText(item.first, 21)
-                << " | "
-                << setw(BAR_WIDTH) << string(length, '#')
-                << " "
+                << " ";
+
+            setTextColor(chartColor(chartIndex));
+            cout << bar;
+            resetTextColor();
+
+            cout << " "
+                << right
+                << setw(8) << percentText(percentage)
+                << "  "
                 << (moneyValue ? moneyText(item.second) : numberText(item.second))
+                << left
                 << endl;
+
+            chartIndex++;
         }
 
         cout << "\n";
@@ -541,10 +603,15 @@ namespace
                 double percentageAngle =
                     (angle / (2 * PI)) * 100;
 
-                cout << symbolForAngle(
-                    percentageAngle,
-                    slices
-                );
+                char symbol =
+                    symbolForAngle(
+                        percentageAngle,
+                        slices
+                    );
+
+                setTextColor(sliceColor(symbol));
+                cout << symbol;
+                resetTextColor();
             }
 
             cout << endl;
@@ -555,8 +622,10 @@ namespace
         for (const PieSlice& slice : slices)
         {
             margin();
-            cout << slice.symbol
-                << " = "
+            setTextColor(sliceColor(slice.symbol));
+            cout << slice.symbol;
+            resetTextColor();
+            cout << " = "
                 << left
                 << setw(24) << fitText(slice.label, 23)
                 << setw(15)
@@ -878,6 +947,10 @@ void dailySalesReport(sql::Connection* con)
     vector<DailySalesRow> rows;
     int totalOrders = 0;
     double totalRevenue = 0;
+    string highestRevenueDay = "N/A";
+    string lowestRevenueDay = "N/A";
+    double highestDailyRevenue = 0;
+    double lowestDailyRevenue = 0;
 
     sql::PreparedStatement* pstmt = nullptr;
     sql::ResultSet* res = nullptr;
@@ -905,6 +978,18 @@ void dailySalesReport(sql::Connection* con)
             row.orders = res->getInt("TotalOrders");
             row.revenue = res->getDouble("Revenue");
 
+            if (row.revenue > highestDailyRevenue || rows.empty())
+            {
+                highestDailyRevenue = row.revenue;
+                highestRevenueDay = row.date;
+            }
+
+            if (row.revenue < lowestDailyRevenue || rows.empty())
+            {
+                lowestDailyRevenue = row.revenue;
+                lowestRevenueDay = row.date;
+            }
+
             rows.push_back(row);
             totalOrders += row.orders;
             totalRevenue += row.revenue;
@@ -918,7 +1003,9 @@ void dailySalesReport(sql::Connection* con)
         printSummary({
             { "Total Revenue", moneyText(totalRevenue) },
             { "Total Orders", to_string(totalOrders) },
-            { "Average Revenue Per Day", moneyText(averagePerDay) }
+            { "Average Revenue Per Day", moneyText(averagePerDay) },
+            { "Highest Revenue Day", highestRevenueDay },
+            { "Lowest Revenue Day", lowestRevenueDay }
             });
 
         printTableTitle("DETAILED DATA TABLE");
@@ -979,7 +1066,9 @@ void monthlySalesReport(sql::Connection* con)
     int totalOrders = 0;
     double totalRevenue = 0;
     string bestMonth = "N/A";
+    string lowestMonth = "N/A";
     double bestRevenue = 0;
+    double lowestRevenue = 0;
 
     sql::PreparedStatement* pstmt = nullptr;
     sql::ResultSet* res = nullptr;
@@ -1013,6 +1102,12 @@ void monthlySalesReport(sql::Connection* con)
                 bestMonth = row.month;
             }
 
+            if (row.revenue < lowestRevenue || rows.empty())
+            {
+                lowestRevenue = row.revenue;
+                lowestMonth = row.month;
+            }
+
             rows.push_back(row);
             totalOrders += row.orders;
             totalRevenue += row.revenue;
@@ -1023,7 +1118,12 @@ void monthlySalesReport(sql::Connection* con)
         printSummary({
             { "Total Revenue", moneyText(totalRevenue) },
             { "Total Orders", to_string(totalOrders) },
-            { "Best Month", bestMonth }
+            { "Best Month", bestMonth },
+            { "Lowest Month", lowestMonth },
+            { "Average Monthly Revenue",
+                rows.empty()
+                ? moneyText(0)
+                : moneyText(totalRevenue / rows.size()) }
             });
 
         printTableTitle("DETAILED DATA TABLE");
@@ -1083,6 +1183,8 @@ void salesByPaymentMethodReport(sql::Connection* con)
     vector<PaymentRow> rows;
     int totalTransactions = 0;
     double totalRevenue = 0;
+    string mostUsedMethod = "N/A";
+    int mostTransactions = 0;
 
     sql::PreparedStatement* pstmt = nullptr;
     sql::ResultSet* res = nullptr;
@@ -1113,6 +1215,12 @@ void salesByPaymentMethodReport(sql::Connection* con)
             rows.push_back(row);
             totalTransactions += row.transactions;
             totalRevenue += row.revenue;
+
+            if (row.transactions > mostTransactions)
+            {
+                mostTransactions = row.transactions;
+                mostUsedMethod = row.method;
+            }
         }
 
         closeQuery(res, pstmt);
@@ -1125,7 +1233,8 @@ void salesByPaymentMethodReport(sql::Connection* con)
 
         printSummary({
             { "Total Revenue", moneyText(totalRevenue) },
-            { "Total Transactions", to_string(totalTransactions) }
+            { "Total Transactions", to_string(totalTransactions) },
+            { "Most Used Payment Method", mostUsedMethod }
             });
 
         printTableTitle("DETAILED DATA TABLE");
@@ -1158,17 +1267,24 @@ void salesByPaymentMethodReport(sql::Connection* con)
             displayInfo("No completed payment transactions found.");
         }
 
-        vector<pair<string, double>> pieData;
+        vector<pair<string, double>> chartData;
 
         for (const PaymentRow& row : rows)
         {
-            pieData.push_back({ row.method, row.revenue });
+            chartData.push_back({ row.method, row.revenue });
         }
+
+        cout << "\n";
+        printBarChart(
+            "Revenue Comparison By Payment Method",
+            chartData,
+            true
+        );
 
         cout << "\n";
         printPieChart(
             "Large ASCII Pie Chart - Revenue Distribution",
-            buildDirectPieSlices(pieData),
+            buildDirectPieSlices(chartData),
             true
         );
     }
@@ -1195,6 +1311,7 @@ void bestSellingProductsReport(sql::Connection* con)
     vector<ProductUnitsRow> rows;
     int totalProductsSold = 0;
     string topProduct = "N/A";
+    int topProductUnits = 0;
 
     sql::PreparedStatement* pstmt = nullptr;
     sql::ResultSet* res = nullptr;
@@ -1227,6 +1344,7 @@ void bestSellingProductsReport(sql::Connection* con)
             if (rows.empty())
             {
                 topProduct = row.productName;
+                topProductUnits = row.unitsSold;
             }
 
             rows.push_back(row);
@@ -1237,7 +1355,9 @@ void bestSellingProductsReport(sql::Connection* con)
 
         printSummary({
             { "Total Products Sold", to_string(totalProductsSold) },
-            { "Top Product", topProduct }
+            { "Top Product", topProduct },
+            { "Top Product Units", to_string(topProductUnits) },
+            { "Products With Sales", to_string(rows.size()) }
             });
 
         printTableTitle("DETAILED DATA TABLE");
@@ -1297,6 +1417,8 @@ void productSalesSummaryReport(sql::Connection* con)
     vector<ProductRevenueRow> rows;
     int totalUnitsSold = 0;
     double totalRevenue = 0;
+    string highestRevenueProduct = "N/A";
+    double highestProductRevenue = 0;
 
     sql::PreparedStatement* pstmt = nullptr;
     sql::ResultSet* res = nullptr;
@@ -1328,6 +1450,12 @@ void productSalesSummaryReport(sql::Connection* con)
             row.unitsSold = res->getInt("UnitsSold");
             row.revenue = res->getDouble("Revenue");
 
+            if (row.revenue > highestProductRevenue || rows.empty())
+            {
+                highestProductRevenue = row.revenue;
+                highestRevenueProduct = row.productName;
+            }
+
             rows.push_back(row);
             totalUnitsSold += row.unitsSold;
             totalRevenue += row.revenue;
@@ -1337,7 +1465,12 @@ void productSalesSummaryReport(sql::Connection* con)
 
         printSummary({
             { "Total Revenue", moneyText(totalRevenue) },
-            { "Total Units Sold", to_string(totalUnitsSold) }
+            { "Total Units Sold", to_string(totalUnitsSold) },
+            { "Highest Revenue Product", highestRevenueProduct },
+            { "Average Revenue Per Product",
+                rows.empty()
+                ? moneyText(0)
+                : moneyText(totalRevenue / rows.size()) }
             });
 
         printTableTitle("DETAILED DATA TABLE");
@@ -1450,7 +1583,9 @@ void bestSellingCategoriesReport(sql::Connection* con)
             groupCategoriesByUnits(rows);
 
         printSummary({
-            { "Most Popular Category", mostPopularCategory }
+            { "Most Popular Category", mostPopularCategory },
+            { "Total Units Sold", to_string(totalUnitsSold) },
+            { "Categories With Sales", to_string(rows.size()) }
             });
 
         printTableTitle("DETAILED DATA TABLE");
@@ -1481,17 +1616,24 @@ void bestSellingCategoriesReport(sql::Connection* con)
             displayInfo("No completed category sales found.");
         }
 
-        vector<pair<string, double>> pieData;
+        vector<pair<string, double>> chartData;
 
         for (const CategoryRow& row : groupedRows)
         {
-            pieData.push_back({ row.category, row.unitsSold });
+            chartData.push_back({ row.category, row.unitsSold });
         }
+
+        cout << "\n";
+        printBarChart(
+            "Best Selling Category Comparison",
+            chartData,
+            false
+        );
 
         cout << "\n";
         printPieChart(
             "Top 3 Categories + Others",
-            buildDirectPieSlices(pieData),
+            buildDirectPieSlices(chartData),
             false
         );
     }
@@ -1518,6 +1660,7 @@ void topCustomersReport(sql::Connection* con)
     vector<CustomerRow> rows;
     string highestCustomer = "N/A";
     double totalSpending = 0;
+    int totalOrders = 0;
 
     sql::PreparedStatement* pstmt = nullptr;
     sql::ResultSet* res = nullptr;
@@ -1555,13 +1698,19 @@ void topCustomersReport(sql::Connection* con)
 
             rows.push_back(row);
             totalSpending += row.spending;
+            totalOrders += row.orders;
         }
 
         closeQuery(res, pstmt);
 
         printSummary({
             { "Highest Spending Customer", highestCustomer },
-            { "Total Spending", moneyText(totalSpending) }
+            { "Total Spending", moneyText(totalSpending) },
+            { "Total Orders", to_string(totalOrders) },
+            { "Average Spending Per Customer",
+                rows.empty()
+                ? moneyText(0)
+                : moneyText(totalSpending / rows.size()) }
             });
 
         printTableTitle("DETAILED DATA TABLE");
@@ -1622,6 +1771,8 @@ void customerPurchaseSummaryReport(sql::Connection* con)
 
     vector<CustomerRow> rows;
     int totalOrders = 0;
+    double totalSpending = 0;
+    string highestCustomer = "N/A";
 
     sql::PreparedStatement* pstmt = nullptr;
     sql::ResultSet* res = nullptr;
@@ -1654,13 +1805,21 @@ void customerPurchaseSummaryReport(sql::Connection* con)
 
             rows.push_back(row);
             totalOrders += row.orders;
+            totalSpending += row.spending;
+
+            if (highestCustomer == "N/A" && row.spending > 0)
+            {
+                highestCustomer = row.customerName;
+            }
         }
 
         closeQuery(res, pstmt);
 
         printSummary({
             { "Total Customers", to_string(rows.size()) },
-            { "Total Orders", to_string(totalOrders) }
+            { "Total Orders", to_string(totalOrders) },
+            { "Total Spending", moneyText(totalSpending) },
+            { "Highest Spending Customer", highestCustomer }
             });
 
         printTableTitle("DETAILED DATA TABLE");
@@ -1725,6 +1884,10 @@ void currentInventoryReport(sql::Connection* con)
 
     vector<InventoryRow> rows;
     int totalStockUnits = 0;
+    string highestStockProduct = "N/A";
+    string lowestStockProduct = "N/A";
+    int highestStock = 0;
+    int lowestStock = 0;
 
     sql::PreparedStatement* pstmt = nullptr;
     sql::ResultSet* res = nullptr;
@@ -1751,6 +1914,18 @@ void currentInventoryReport(sql::Connection* con)
             row.productName = res->getString("ProductName");
             row.stock = res->getInt("StockQuantity");
 
+            if (row.stock > highestStock || rows.empty())
+            {
+                highestStock = row.stock;
+                highestStockProduct = row.productName;
+            }
+
+            if (row.stock < lowestStock || rows.empty())
+            {
+                lowestStock = row.stock;
+                lowestStockProduct = row.productName;
+            }
+
             rows.push_back(row);
             totalStockUnits += row.stock;
         }
@@ -1759,7 +1934,9 @@ void currentInventoryReport(sql::Connection* con)
 
         printSummary({
             { "Active Products", to_string(rows.size()) },
-            { "Total Stock Units", to_string(totalStockUnits) }
+            { "Total Stock Units", to_string(totalStockUnits) },
+            { "Highest Stock Product", highestStockProduct },
+            { "Lowest Stock Product", lowestStockProduct }
             });
 
         printTableTitle("DETAILED DATA TABLE");
@@ -1817,6 +1994,7 @@ void lowStockAlertReport(sql::Connection* con)
     );
 
     vector<InventoryRow> rows;
+    int criticalStockProducts = 0;
 
     sql::PreparedStatement* pstmt = nullptr;
     sql::ResultSet* res = nullptr;
@@ -1845,13 +2023,19 @@ void lowStockAlertReport(sql::Connection* con)
             row.productName = res->getString("ProductName");
             row.stock = res->getInt("StockQuantity");
 
+            if (row.stock <= 3)
+            {
+                criticalStockProducts++;
+            }
+
             rows.push_back(row);
         }
 
         closeQuery(res, pstmt);
 
         printSummary({
-            { "Number Of Low Stock Products", to_string(rows.size()) }
+            { "Number Of Low Stock Products", to_string(rows.size()) },
+            { "Critical Stock Products", to_string(criticalStockProducts) }
             });
 
         printTableTitle("DETAILED DATA TABLE");
@@ -2016,6 +2200,7 @@ void revenueByCategoryAnalytics(sql::Connection* con)
 
     vector<CategoryRow> rows;
     double totalRevenue = 0;
+    string highestRevenueCategory = "N/A";
 
     sql::PreparedStatement* pstmt = nullptr;
     sql::ResultSet* res = nullptr;
@@ -2044,6 +2229,11 @@ void revenueByCategoryAnalytics(sql::Connection* con)
             row.category = res->getString("CategoryName");
             row.revenue = res->getDouble("Revenue");
 
+            if (rows.empty())
+            {
+                highestRevenueCategory = row.category;
+            }
+
             rows.push_back(row);
             totalRevenue += row.revenue;
         }
@@ -2060,7 +2250,9 @@ void revenueByCategoryAnalytics(sql::Connection* con)
             groupCategoriesByRevenue(rows);
 
         printSummary({
-            { "Total Revenue", moneyText(totalRevenue) }
+            { "Total Revenue", moneyText(totalRevenue) },
+            { "Highest Revenue Category", highestRevenueCategory },
+            { "Categories With Revenue", to_string(rows.size()) }
             });
 
         printTableTitle("DETAILED DATA TABLE");
@@ -2091,17 +2283,24 @@ void revenueByCategoryAnalytics(sql::Connection* con)
             displayInfo("No completed category revenue found.");
         }
 
-        vector<pair<string, double>> pieData;
+        vector<pair<string, double>> chartData;
 
         for (const CategoryRow& row : groupedRows)
         {
-            pieData.push_back({ row.category, row.revenue });
+            chartData.push_back({ row.category, row.revenue });
         }
+
+        cout << "\n";
+        printBarChart(
+            "Revenue Comparison By Category",
+            chartData,
+            true
+        );
 
         cout << "\n";
         printPieChart(
             "Top 3 Categories + Others",
-            buildDirectPieSlices(pieData),
+            buildDirectPieSlices(chartData),
             true
         );
     }
@@ -2123,6 +2322,7 @@ void topFiveBestSellingProducts(sql::Connection* con)
 
     vector<ProductUnitsRow> rows;
     int totalUnitsSold = 0;
+    string topProduct = "N/A";
 
     sql::PreparedStatement* pstmt = nullptr;
     sql::ResultSet* res = nullptr;
@@ -2153,6 +2353,11 @@ void topFiveBestSellingProducts(sql::Connection* con)
             row.productName = res->getString("ProductName");
             row.unitsSold = res->getInt("UnitsSold");
 
+            if (rows.empty())
+            {
+                topProduct = row.productName;
+            }
+
             rows.push_back(row);
             totalUnitsSold += row.unitsSold;
         }
@@ -2160,7 +2365,9 @@ void topFiveBestSellingProducts(sql::Connection* con)
         closeQuery(res, pstmt);
 
         printSummary({
-            { "Total Units Sold", to_string(totalUnitsSold) }
+            { "Total Units Sold", to_string(totalUnitsSold) },
+            { "Top Product", topProduct },
+            { "Products Displayed", to_string(rows.size()) }
             });
 
         printTableTitle("DETAILED DATA TABLE");

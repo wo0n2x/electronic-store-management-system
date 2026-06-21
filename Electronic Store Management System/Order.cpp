@@ -13,6 +13,28 @@
 
 using namespace std;
 
+namespace
+{
+    void printOrderTableLine(int width)
+    {
+        printTableLine(width);
+    }
+
+    void printOrderStatusField(string status, int width)
+    {
+        int padding =
+            width - static_cast<int>(status.length());
+
+        if (padding < 0)
+        {
+            padding = 0;
+        }
+
+        printStatus(status);
+        cout << string(padding, ' ');
+    }
+}
+
 //=====================================================
 // Cart Structure
 //=====================================================
@@ -75,11 +97,13 @@ void displayCart(vector<CartItem>& cart)
 
     if (cart.empty())
     {
-        cout << "Cart is empty.\n";
+        displayInfo("Cart is empty.");
 
         return;
     }
 
+    setTableHeaderColor();
+    margin();
     cout << left
         << setw(12) << "ProductID"
         << setw(25) << "Product"
@@ -87,11 +111,14 @@ void displayCart(vector<CartItem>& cart)
         << setw(8) << "Qty"
         << setw(12) << "Total"
         << endl;
+    resetTextColor();
 
-    cout << "----------------------------------------------------------------\n";
+    printOrderTableLine(64);
 
     for (auto& item : cart)
     {
+        margin();
+
         cout << left
             << setw(12) << item.productID
             << setw(25) << item.productName
@@ -103,7 +130,9 @@ void displayCart(vector<CartItem>& cart)
         grandTotal += item.subtotal;
     }
 
-    cout << "----------------------------------------------------------------\n";
+    printOrderTableLine(64);
+
+    margin();
 
     cout << right
         << setw(45)
@@ -112,7 +141,7 @@ void displayCart(vector<CartItem>& cart)
         << grandTotal
         << endl;
 
-    cout << "============================================================\n";
+    printOrderTableLine(60);
 }
 
 // Generate OrderID
@@ -164,7 +193,7 @@ void checkoutOrder(
 {
     if (cart.empty())
     {
-        cout << "\nCart is empty!\n";
+        displayInfo("Cart is empty.");
 
         return;
     }
@@ -181,10 +210,17 @@ void checkoutOrder(
     clearScreen();
 
     displayHeader("ORDER SUMMARY");
+    displayPath("HOME > ORDER MANAGEMENT > CREATE ORDER > CHECKOUT");
+
+    margin();
     cout << "Customer ID : "
         << customerID << endl;
 
-    cout << "Status      : PENDING" << endl;
+    margin();
+    cout << "Status      : ";
+    printStatus("PENDING");
+    cout << endl;
+
     displayCart(cart);
 
     int confirmChoice;
@@ -202,8 +238,9 @@ void checkoutOrder(
 
         cin.ignore(1000, '\n');
 
-        cout << "\nInvalid choice!";
-        cout << "\nEnter again : ";
+        displayError("Invalid choice.");
+        margin();
+        cout << "Enter again : ";
     }
 
     if (confirmChoice == 1)
@@ -216,7 +253,7 @@ void checkoutOrder(
     }
     else
     {
-        cout << "\nCheckout cancelled.\n";
+        displayInfo("Checkout cancelled.");
     }
 }
 
@@ -229,7 +266,7 @@ void saveOrder(
 {
     if (cart.empty())
     {
-        cout << "\nCart is empty!\n";
+        displayInfo("Cart is empty.");
 
         return;
     }
@@ -320,9 +357,7 @@ void saveOrder(
 
         con->setAutoCommit(true);
 
-        cout << "\nDatabase Error : "
-            << e.what()
-            << endl;
+        displayError(e.what());
     }
 }
 
@@ -366,16 +401,16 @@ void addProductToCart(
     );
 
     margin();
+    setTableHeaderColor();
     cout << left
         << setw(12) << "ProductID"
         << setw(30) << "Product Name"
         << setw(12) << "Price"
         << setw(10) << "Stock"
         << endl;
+    resetTextColor();
 
-    margin();
-    cout << "------------------------------------------------------------------"
-        << endl;
+    printOrderTableLine(64);
 
     while (productList->next())
     {
@@ -398,9 +433,7 @@ void addProductToCart(
             << endl;
     }
 
-    margin();
-    cout << "------------------------------------------------------------------"
-        << endl;
+    printOrderTableLine(64);
 
     delete productList;
     delete stmt;
@@ -469,7 +502,7 @@ void addProductToCart(
 
             cin.ignore(1000, '\n');
 
-            cout << "\nInvalid quantity!";
+            displayError("Invalid quantity.");
             cout << "\nEnter again : ";
         }
 
@@ -511,9 +544,7 @@ void addProductToCart(
     }
     catch (sql::SQLException& e)
     {
-        cout << "\nDatabase Error : "
-            << e.what()
-            << endl;
+        displayError(e.what());
     }
 }
 //=====================================================
@@ -898,6 +929,8 @@ void viewOrders(sql::Connection* con)
             "ORDER BY OrderDate DESC"
          );
 
+        margin();
+        setTableHeaderColor();
         cout << left
             << setw(12) << "OrderID"
             << setw(15) << "Customer"
@@ -905,8 +938,9 @@ void viewOrders(sql::Connection* con)
             << setw(15) << "Status"
             << setw(12) << "Total"
             << endl;
+        resetTextColor();
 
-        cout << "--------------------------------------------------------------------------\n";
+        printOrderTableLine(74);
 
         int totalOrders = 0;
 
@@ -924,18 +958,19 @@ void viewOrders(sql::Connection* con)
                 status = "CANCELLED";
             }
 
+            margin();
             cout << left
                 << setw(12) << res->getString("OrderID")
                 << setw(15) << res->getString("CustomerID")
-                << setw(20) << res->getString("PaymentMethod")
-                << setw(15) << status
-                << fixed << setprecision(2)
+                << setw(20) << res->getString("PaymentMethod");
+            printOrderStatusField(status, 15);
+            cout << fixed << setprecision(2)
                 << res->getDouble("TotalAmount")
                 << endl;
             totalOrders++;
         }
 
-        cout << "--------------------------------------------------------------------------\n";
+        printOrderTableLine(74);
 
         margin();
 
@@ -978,14 +1013,16 @@ void processPayment(sql::Connection* con)
         cout << "\n";
 
         margin();
+        setTableHeaderColor();
         cout << left
             << setw(12) << "OrderID"
             << setw(15) << "Customer"
+            << setw(15) << "Status"
             << setw(15) << "Total"
             << endl;
+        resetTextColor();
 
-        margin();
-        cout << "--------------------------------------------------\n";
+        printOrderTableLine(57);
 
         int totalPending = 0;
 
@@ -995,21 +1032,20 @@ void processPayment(sql::Connection* con)
 
             cout << left
                 << setw(12) << res->getString("OrderID")
-                << setw(15) << res->getString("CustomerID")
-                << fixed << setprecision(2)
+                << setw(15) << res->getString("CustomerID");
+            printOrderStatusField(res->getString("OrderStatus"), 15);
+            cout << fixed << setprecision(2)
                 << res->getDouble("TotalAmount")
                 << endl;
 
             totalPending++;
         }
 
-        margin();
-        cout << "--------------------------------------------------\n";
+        printOrderTableLine(57);
 
         if (totalPending == 0)
         {
-            margin();
-            cout << "Operation cancelled.\n";
+            displayInfo("No pending orders available for payment.");
             delete res;
             delete pstmt;
 
@@ -1079,8 +1115,7 @@ void processPayment(sql::Connection* con)
             cin.clear();
             cin.ignore(1000, '\n');
 
-            margin();
-            cout << "Invalid choice!\n";
+            displayError("Invalid payment method.");
 
             margin();
             cout << "Enter Payment Method : ";
@@ -1115,8 +1150,7 @@ void processPayment(sql::Connection* con)
 
         if (toupper(confirm) != 'Y')
         {
-            margin();
-            cout << "Operation cancelled.\n";
+            displayInfo("Operation cancelled.");
             return;
         }
 
@@ -1159,7 +1193,9 @@ void searchOrder(sql::Connection* con)
 
     string orderID;
 
-    cout << "\nEnter Order ID : ";
+    cout << "\n";
+    margin();
+    cout << "Enter Order ID : ";
     cin >> orderID;
 
     try
@@ -1188,17 +1224,32 @@ void searchOrder(sql::Connection* con)
             return;
         }
 
-        cout << "\nOrder ID    : "
+        displaySection("ORDER DETAILS");
+
+        margin();
+        cout << left
+            << setw(15) << "Order ID"
+            << ": "
             << res->getString("OrderID") << endl;
 
-        cout << "Customer ID : "
+        margin();
+        cout << left
+            << setw(15) << "Customer ID"
+            << ": "
             << res->getString("CustomerID") << endl;
 
-        cout << "Payment     : "
+        margin();
+        cout << left
+            << setw(15) << "Payment"
+            << ": "
             << res->getString("PaymentMethod") << endl;
 
-        cout << "Status      : "
-            << res->getString("OrderStatus") << endl;
+        margin();
+        cout << left
+            << setw(15) << "Status"
+            << ": ";
+        printStatus(res->getString("OrderStatus"));
+        cout << endl;
 
         string dateTime =
             res->getString("OrderDate");
@@ -1209,11 +1260,17 @@ void searchOrder(sql::Connection* con)
         string orderTime =
             dateTime.substr(11, 8);
 
-        cout << "Order Date  : "
+        margin();
+        cout << left
+            << setw(15) << "Order Date"
+            << ": "
             << orderDate
             << endl;
 
-        cout << "Order Time  : "
+        margin();
+        cout << left
+            << setw(15) << "Order Time"
+            << ": "
             << orderTime
             << endl;
 
@@ -1244,6 +1301,8 @@ void searchOrder(sql::Connection* con)
 
         res = pstmt->executeQuery();
 
+        margin();
+        setTableHeaderColor();
         cout << left
             << setw(12) << "ProductID"
             << setw(25) << "Product"
@@ -1251,11 +1310,13 @@ void searchOrder(sql::Connection* con)
             << setw(12) << "Price"
             << setw(12) << "Subtotal"
             << endl;
+        resetTextColor();
 
-        cout << "----------------------------------------------------------------\n";
+        printOrderTableLine(71);
 
         while (res->next())
         {
+            margin();
             cout << left
                 << setw(12)
                 << res->getString("ProductID")
@@ -1277,9 +1338,11 @@ void searchOrder(sql::Connection* con)
                 << endl;
         }
 
-        cout << "----------------------------------------------------------------\n";
+        printOrderTableLine(71);
 
-        cout << "\nGrand Total : RM "
+        cout << "\n";
+        margin();
+        cout << "Grand Total : RM "
             << fixed << setprecision(2)
             << grandTotal
             << endl;
@@ -1323,14 +1386,16 @@ void cancelOrder(sql::Connection* con)
     cout << "\n";
 
     margin();
+    setTableHeaderColor();
     cout << left
         << setw(12) << "OrderID"
         << setw(15) << "Customer"
+        << setw(15) << "Status"
         << setw(15) << "Total"
         << endl;
+    resetTextColor();
 
-    margin();
-    cout << "--------------------------------------------------\n";
+    printOrderTableLine(57);
 
     while (res->next())
     {
@@ -1338,14 +1403,14 @@ void cancelOrder(sql::Connection* con)
 
         cout << left
             << setw(12) << res->getString("OrderID")
-            << setw(15) << res->getString("CustomerID")
-            << fixed << setprecision(2)
+            << setw(15) << res->getString("CustomerID");
+        printOrderStatusField(res->getString("OrderStatus"), 15);
+        cout << fixed << setprecision(2)
             << res->getDouble("TotalAmount")
             << endl;
     }
 
-    margin();
-    cout << "--------------------------------------------------\n";
+    printOrderTableLine(57);
 
     delete res;
     delete pstmt;
@@ -1398,22 +1463,36 @@ void cancelOrder(sql::Connection* con)
             return;
         }
 
-        cout << "\nOrder ID    : "
-             << res->getString("OrderID")
-             << endl;
+        displaySection("ORDER DETAILS");
 
-        cout << "Customer ID : "
-             << res->getString("CustomerID")
-             << endl;
+        margin();
+        cout << left
+            << setw(15) << "Order ID"
+            << ": "
+            << res->getString("OrderID")
+            << endl;
 
-        cout << "Status      : "
-             << res->getString("OrderStatus")
-             << endl;
+        margin();
+        cout << left
+            << setw(15) << "Customer ID"
+            << ": "
+            << res->getString("CustomerID")
+            << endl;
 
-        cout << "Total       : RM "
-             << fixed << setprecision(2)
-             << res->getDouble("TotalAmount")
-             << endl;
+        margin();
+        cout << left
+            << setw(15) << "Status"
+            << ": ";
+        printStatus(res->getString("OrderStatus"));
+        cout << endl;
+
+        margin();
+        cout << left
+            << setw(15) << "Total"
+            << ": RM "
+            << fixed << setprecision(2)
+            << res->getDouble("TotalAmount")
+            << endl;
 
         delete res;
         delete pstmt;
@@ -1433,8 +1512,9 @@ void cancelOrder(sql::Connection* con)
 
             cin.ignore(1000, '\n');
 
-            cout << "\nInvalid choice!";
-            cout << "\nEnter again : ";
+            displayError("Invalid choice.");
+            margin();
+            cout << "Enter again : ";
         }
 
         if (choice == 2)
@@ -1497,7 +1577,7 @@ void cancelOrder(sql::Connection* con)
             "Order cancelled successfully."
         );
 
-        cout << "\nProduct stock restored.\n";
+        displayInfo("Product stock restored.");
     }
     catch (sql::SQLException& e)
     {
@@ -1537,15 +1617,16 @@ void restoreOrder(sql::Connection* con)
     res = pstmt->executeQuery();
 
     margin();
+    setTableHeaderColor();
     cout << left
         << setw(12) << "OrderID"
         << setw(15) << "Customer"
+        << setw(15) << "Status"
         << setw(15) << "Total"
         << endl;
+    resetTextColor();
 
-    margin();
-    cout << "--------------------------------------------------"
-        << endl;
+    printOrderTableLine(57);
 
     int totalOrders = 0;
 
@@ -1555,17 +1636,16 @@ void restoreOrder(sql::Connection* con)
 
         cout << left
             << setw(12) << res->getString("OrderID")
-            << setw(15) << res->getString("CustomerID")
-            << fixed << setprecision(2)
+            << setw(15) << res->getString("CustomerID");
+        printOrderStatusField("CANCELLED", 15);
+        cout << fixed << setprecision(2)
             << res->getDouble("TotalAmount")
             << endl;
 
         totalOrders++;
     }
 
-    margin();
-    cout << "--------------------------------------------------"
-        << endl;
+    printOrderTableLine(57);
 
     if (totalOrders == 0)
     {
@@ -1657,9 +1737,9 @@ void restoreOrder(sql::Connection* con)
         margin();
         cout << left
             << setw(15) << "Status"
-            << ": "
-            << res->getString("OrderStatus")
-            << endl;
+            << ": ";
+        printStatus(res->getString("OrderStatus"));
+        cout << endl;
 
         margin();
         cout << left
@@ -1727,8 +1807,9 @@ void restoreOrder(sql::Connection* con)
 
             cin.ignore(1000, '\n');
 
-            cout << "\nInvalid choice!";
-            cout << "\nEnter again : ";
+            displayError("Invalid choice.");
+            margin();
+            cout << "Enter again : ";
         }
 
         if (choice == 2)

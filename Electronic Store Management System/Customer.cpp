@@ -11,6 +11,20 @@
 
 using namespace std;
 
+namespace
+{
+    void printCustomerPrompt(string prompt)
+    {
+        margin();
+        cout << prompt;
+    }
+
+    void printCustomerLine(int width)
+    {
+        printTableLine(width);
+    }
+}
+
 string generateCustomerID(sql::Connection* con)
 {
     sql::Statement* stmt;
@@ -96,17 +110,17 @@ void displayCustomerList(sql::Connection* con)
 
         cout << "\n";
 
-        margin();
-        cout << "====================================================\n";
+        printCustomerLine(52);
 
         margin();
+        setTableHeaderColor();
         cout << left
             << setw(12) << "ID"
             << setw(30) << "Customer Name"
             << endl;
+        resetTextColor();
 
-        margin();
-        cout << "====================================================\n";
+        printCustomerLine(52);
 
         while (res->next())
         {
@@ -118,15 +132,14 @@ void displayCustomerList(sql::Connection* con)
                 << endl;
         }
 
-        margin();
-        cout << "====================================================\n";
+        printCustomerLine(52);
 
         delete res;
         delete stmt;
     }
     catch (sql::SQLException& e)
     {
-        cout << "\nError: " << e.what() << endl;
+        displayError(e.what());
     }
 }
 
@@ -145,46 +158,48 @@ void addCustomer(sql::Connection* con)
 
     cin.ignore();
 
+    displayHeader("ADD CUSTOMER");
+    displayPath("HOME > CUSTOMER MANAGEMENT > ADD CUSTOMER");
+    displaySection("CUSTOMER DETAILS");
+
     // Customer Name
-    cout << "\nEnter Customer Name: ";
+    printCustomerPrompt("Enter Customer Name: ");
     getline(cin, name);
 
     while (!isValidName(name))
     {
-        cout << "\nInvalid name!";
-        cout << "\nName must contain letters only.\n";
+        displayError("Name must contain letters only.");
 
-        cout << "Enter Customer Name: ";
+        printCustomerPrompt("Enter Customer Name: ");
         getline(cin, name);
     }
 
     // Email
-    cout << "Enter Email: ";
+    printCustomerPrompt("Enter Email: ");
     getline(cin, email);
 
     while (!isValidEmail(email))
     {
-        cout << "\nInvalid email format!\n";
+        displayError("Invalid email format.");
 
-        cout << "Enter Email: ";
+        printCustomerPrompt("Enter Email: ");
         getline(cin, email);
     }
 
     // Contact Number
-    cout << "Enter Contact Number: ";
+    printCustomerPrompt("Enter Contact Number: ");
     getline(cin, contact);
 
     while (!isValidContact(contact))
     {
-        cout << "\nInvalid contact number!";
-        cout << "\nNumbers only.\n";
+        displayError("Contact number must contain numbers only.");
 
-        cout << "Enter Contact Number: ";
+        printCustomerPrompt("Enter Contact Number: ");
         getline(cin, contact);
     }
 
     // Address
-    cout << "Enter Address: ";
+    printCustomerPrompt("Enter Address: ");
     getline(cin, address);
 
     try
@@ -205,14 +220,15 @@ void addCustomer(sql::Connection* con)
 
         pstmt->executeUpdate();
 
-        cout << "\nCustomer added successfully!\n";
+        displaySuccess("Customer added successfully.");
+        margin();
         cout << "Customer ID : " << customerID << endl;
 
         delete pstmt;
     }
     catch (sql::SQLException& e)
     {
-        cout << "\nError: " << e.what() << endl;
+        displayError(e.what());
     }
 }
 
@@ -225,6 +241,9 @@ void addCustomer(sql::Connection* con)
 // =====================================
 void viewCustomers(sql::Connection* con)
 {
+    displayHeader("VIEW CUSTOMERS");
+    displayPath("HOME > CUSTOMER MANAGEMENT > VIEW CUSTOMERS");
+
     try
     {
         sql::Statement* stmt;
@@ -238,8 +257,10 @@ void viewCustomers(sql::Connection* con)
             "ORDER BY CustomerID"
         );
 
-        cout << "\n========================================================================================================\n";
+        printCustomerLine(103);
 
+        margin();
+        setTableHeaderColor();
         cout << left
             << setw(8) << "ID"
             << setw(25) << "Name"
@@ -247,13 +268,15 @@ void viewCustomers(sql::Connection* con)
             << setw(15) << "Contact"
             << setw(20) << "Address"
             << endl;
+        resetTextColor();
 
-        cout << "========================================================================================================\n";
+        printCustomerLine(103);
 
         int count = 0;
 
         while (res->next())
         {
+            margin();
             cout << left
                 << setw(8) << res->getString("CustomerID")
                 << setw(25) << res->getString("CustomerName")
@@ -265,9 +288,10 @@ void viewCustomers(sql::Connection* con)
             count++;
         }
 
-        cout << "========================================================================================================\n";
+        printCustomerLine(103);
 
-        cout << "Total Customers: "
+        margin();
+        cout << "Total Customers : "
             << count
             << endl;
 
@@ -276,9 +300,7 @@ void viewCustomers(sql::Connection* con)
     }
     catch (sql::SQLException& e)
     {
-        cout << "\nError: "
-            << e.what()
-            << endl;
+        displayError(e.what());
     }
 }
 // =====================================
@@ -289,6 +311,7 @@ void updateCustomer(sql::Connection* con)
     string customerID;
 
     displayHeader("UPDATE CUSTOMER");
+    displayPath("HOME > CUSTOMER MANAGEMENT > UPDATE CUSTOMER");
 
     displayCustomerList(con);
 
@@ -314,7 +337,7 @@ void updateCustomer(sql::Connection* con)
 
         if (!res->next())
         {
-            cout << "\nCustomer not found!\n";
+            displayError("Customer not found.");
 
             delete res;
             delete pstmt;
@@ -334,18 +357,22 @@ void updateCustomer(sql::Connection* con)
         string currentAddress =
             res->getString("Address");
 
-        cout << "\nCurrent Customer Information\n\n";
+        displaySection("CURRENT CUSTOMER INFORMATION");
 
-        cout << "Name    : "
+        margin();
+        cout << left << setw(12) << "Name" << ": "
             << currentName << endl;
 
-        cout << "Email   : "
+        margin();
+        cout << left << setw(12) << "Email" << ": "
             << currentEmail << endl;
 
-        cout << "Contact : "
+        margin();
+        cout << left << setw(12) << "Contact" << ": "
             << currentContact << endl;
 
-        cout << "Address : "
+        margin();
+        cout << left << setw(12) << "Address" << ": "
             << currentAddress << endl;
 
         delete res;
@@ -355,19 +382,24 @@ void updateCustomer(sql::Connection* con)
 
         cin.ignore();
 
-        cout << "\nCustomer Name : "
+        cout << "\n";
+        printCustomerPrompt("Customer Name : ");
+        cout
             << currentName
             << " (READ ONLY)\n";
 
-        cout << "Email         : "
+        printCustomerPrompt("Email         : ");
+        cout
             << currentEmail
             << " (READ ONLY)\n";
 
-        cout << "\nCurrent Contact : "
+        cout << "\n";
+        printCustomerPrompt("Current Contact : ");
+        cout
             << currentContact
             << endl;
 
-        cout << "New Contact (Press Enter to keep current): ";
+        printCustomerPrompt("New Contact (Press Enter to keep current): ");
         getline(cin, contact);
 
         if (contact.empty())
@@ -378,19 +410,20 @@ void updateCustomer(sql::Connection* con)
         {
             while (!isValidContact(contact))
             {
-                cout << "\nInvalid contact number!";
-                cout << "\nNumbers only.\n";
+                displayError("Contact number must contain numbers only.");
 
-                cout << "New Contact: ";
+                printCustomerPrompt("New Contact: ");
                 getline(cin, contact);
             }
         }
 
-        cout << "\nCurrent Address : "
+        cout << "\n";
+        printCustomerPrompt("Current Address : ");
+        cout
             << currentAddress
             << endl;
 
-        cout << "New Address (Press Enter to keep current): ";
+        printCustomerPrompt("New Address (Press Enter to keep current): ");
         getline(cin, address);
 
         if (address.empty())
@@ -410,15 +443,13 @@ void updateCustomer(sql::Connection* con)
 
         pstmt->executeUpdate();
 
-        cout << "\nCustomer updated successfully!\n";
+        displaySuccess("Customer updated successfully.");
 
         delete pstmt;
     }
     catch (sql::SQLException& e)
     {
-        cout << "\nError: "
-            << e.what()
-            << endl;
+        displayError(e.what());
     }
 }
 // =====================================
@@ -430,10 +461,12 @@ void deleteCustomer(sql::Connection* con)
     char confirm;
 
     displayHeader("DELETE CUSTOMER");
+    displayPath("HOME > CUSTOMER MANAGEMENT > DELETE CUSTOMER");
 
     displayCustomerList(con);
 
-    cout << "\nEnter Customer ID: ";
+    cout << "\n";
+    printCustomerPrompt("Enter Customer ID: ");
     cin >> customerID;
 
     try
@@ -452,7 +485,7 @@ void deleteCustomer(sql::Connection* con)
 
         if (!res->next())
         {
-            cout << "\nCustomer not found!\n";
+            displayError("Customer not found.");
 
             delete res;
             delete pstmt;
@@ -462,12 +495,14 @@ void deleteCustomer(sql::Connection* con)
         delete res;
         delete pstmt;
 
-        cout << "\nAre you sure you want to delete this customer? (Y/N): ";
+        displayWarning("This customer will become inactive.");
+        cout << "\n";
+        printCustomerPrompt("Deactivate this customer? (Y/N): ");
         cin >> confirm;
 
         if (toupper(confirm) != 'Y')
         {
-            cout << "\nDelete cancelled.\n";
+            displayInfo("Delete cancelled.");
             return;
         }
 
@@ -480,13 +515,13 @@ void deleteCustomer(sql::Connection* con)
         pstmt->setString(1, customerID);
         pstmt->executeUpdate();
 
-        cout << "\nCustomer deactivated successfully!\n";
+        displaySuccess("Customer deactivated successfully.");
 
         delete pstmt;
     }
     catch (sql::SQLException& e)
     {
-        cout << "\nError: " << e.what() << endl;
+        displayError(e.what());
     }
 }
 
@@ -497,10 +532,12 @@ void restoreCustomer(sql::Connection* con)
 {
     clearScreen();
     displayHeader("RESTORE CUSTOMER");
+    displayPath("HOME > CUSTOMER MANAGEMENT > RESTORE CUSTOMER");
     string customerID;
     char confirm;
 
-    cout << "\nEnter Customer ID: ";
+    cout << "\n";
+    printCustomerPrompt("Enter Customer ID: ");
     cin >> customerID;
 
     try
@@ -520,7 +557,7 @@ void restoreCustomer(sql::Connection* con)
 
         if (!res->next())
         {
-            cout << "\nInactive customer not found!\n";
+            displayError("Inactive customer not found.");
 
             delete res;
             delete pstmt;
@@ -528,42 +565,47 @@ void restoreCustomer(sql::Connection* con)
             return;
         }
 
-        cout << "\n--------------------------------------------------\n";
+        displaySection("CUSTOMER DETAILS");
 
-        cout << "Customer ID : "
+        margin();
+        cout << left << setw(14) << "Customer ID" << ": "
             << res->getString("CustomerID")
             << endl;
 
-        cout << "Name        : "
+        margin();
+        cout << left << setw(14) << "Name" << ": "
             << res->getString("CustomerName")
             << endl;
 
-        cout << "Email       : "
+        margin();
+        cout << left << setw(14) << "Email" << ": "
             << res->getString("Email")
             << endl;
 
-        cout << "Contact No  : "
+        margin();
+        cout << left << setw(14) << "Contact No" << ": "
             << res->getString("ContactNo")
             << endl;
 
-        cout << "Address     : "
+        margin();
+        cout << left << setw(14) << "Address" << ": "
             << res->getString("Address")
             << endl;
 
-        cout << "Status      : "
-            << res->getString("Status")
-            << endl;
-
-        cout << "--------------------------------------------------\n";
+        margin();
+        cout << left << setw(14) << "Status" << ": ";
+        printStatus(res->getString("Status"));
+        cout << endl;
         delete res;
         delete pstmt;
 
-        cout << "\n\nRestore this customer? (Y/N): ";
+        cout << "\n";
+        printCustomerPrompt("Restore this customer? (Y/N): ");
         cin >> confirm;
 
         if (toupper(confirm) != 'Y')
         {
-            cout << "\nRestore cancelled.\n";
+            displayInfo("Restore cancelled.");
 
             return;
         }
@@ -578,15 +620,13 @@ void restoreCustomer(sql::Connection* con)
 
         pstmt->executeUpdate();
 
-        cout << "\nCustomer restored successfully!\n";
+        displaySuccess("Customer restored successfully.");
 
         delete pstmt;
     }
     catch (sql::SQLException& e)
     {
-        cout << "\nError: "
-            << e.what()
-            << endl;
+        displayError(e.what());
     }
 }
 
@@ -595,31 +635,35 @@ void restoreCustomer(sql::Connection* con)
 // =====================================
 void customerManagementMenu(sql::Connection* con)
 {
-    clearScreen();
     int choice;
 
     do
     {
-        margin();
-        cout << "========================================\n";
-        margin();
-        cout << "         CUSTOMER MANAGEMENT\n";
-        margin();
-        cout << "========================================\n";
+        clearScreen();
+
+        displayHeader("CUSTOMER MANAGEMENT");
+        displayPath("HOME > CUSTOMER MANAGEMENT");
+
         margin();
         cout << "1. Add Customer\n";
+
         margin();
         cout << "2. Update Customer\n";
+
         margin();
         cout << "3. Delete Customer\n";
+
         margin();
         cout << "4. Restore Customer\n";
+
         margin();
         cout << "5. View Customer\n";
+
 		margin();
         cout << "6. Back\n\n";
+
         margin();
-        cout << "Enter Choice:\n ";
+        cout << "Enter Choice : ";
         cin >> choice;
 
         if (cin.fail())
@@ -627,11 +671,9 @@ void customerManagementMenu(sql::Connection* con)
             cin.clear();
             cin.ignore(1000, '\n');
 
-            margin();
-            cout << "Invalid choice!\n";
+            displayError("Invalid choice.");
 
             pauseScreen();
-            clearScreen();
 
             continue;
         }
@@ -692,17 +734,15 @@ void customerManagementMenu(sql::Connection* con)
             break;
 
         case 6:
-            cout << "\nReturning to Main Menu...\n";
-            loadingScreen();
-
-            clearScreen();
+            displayInfo("Returning to Main Menu.");
 
             return;
-            break;
+
 
         default:
-            cout << "\nInvalid choice!\n";
+            displayError("Invalid choice.");
+            pauseScreen();
         }
 
-    } while (choice != 5);
+    } while (true);
 }
