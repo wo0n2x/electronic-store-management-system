@@ -131,6 +131,7 @@
     <ClCompile Include="main.cpp" />
     <ClCompile Include="Order.cpp" />
     <ClCompile Include="Product.cpp" />
+    <ClCompile Include="Report.cpp" />
     <ClCompile Include="Staff.cpp" />
     <ClCompile Include="Utility.cpp" />
   </ItemGroup>
@@ -139,6 +140,7 @@
     <ClInclude Include="Customer.h" />
     <ClInclude Include="Order.h" />
     <ClInclude Include="Product.h" />
+    <ClInclude Include="Report.h" />
     <ClInclude Include="Staff.h" />
     <ClInclude Include="Utility.h" />
   </ItemGroup>

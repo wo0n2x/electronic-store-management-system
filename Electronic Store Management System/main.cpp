@@ -9,12 +9,8 @@
 #include "Product.h"
 #include "Staff.h"
 #include "Order.h"
-
-/*
-
-#include "Sales.h"
 #include "Report.h"
-*/
+
 using namespace std;
 
 const string server = "tcp://127.0.0.1:3306";
@@ -114,7 +110,7 @@ int main()
 
         if (isAdmin)
         {
-            if (choice < 1 || choice > 8)
+            if (choice < 1 || choice > 7)
             {
                 margin();
                 cout << "Invalid choice!\n";
@@ -123,7 +119,7 @@ int main()
         }
         else
         {
-            if (choice < 1 || choice > 7)
+            if (choice < 1 || choice > 6)
             {
                 margin();
                 cout << "Invalid choice!\n";
@@ -153,23 +149,12 @@ int main()
 
             break;
 
-            /*
+        case 4:
 
-            case 4:
+            reportManagementMenu(con);
+            clearScreen();
 
-                salesManagementMenu(con);
-                clearScreen();
-
-                break;
-
-            case 5:
-
-                reportManagementMenu(con);
-                clearScreen();
-
-                break;
-
-            */
+            break;
 
         case 5:
 
