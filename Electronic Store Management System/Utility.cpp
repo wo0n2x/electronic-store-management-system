@@ -269,3 +269,23 @@ void loadingScreen()
     printColored(GREEN, "System Ready...");
 
 }
+
+void displayInfo(string message)
+{
+    cout << "\n";
+    margin();
+    setTextColor(CYAN);
+    cout << "[INFO] ";
+    resetTextColor();
+    cout << message << endl;
+}
+
+void displayWarning(string message)
+{
+    cout << "\n";
+    margin();
+    setTextColor(YELLOW);
+    cout << "[WARNING] ";
+    resetTextColor();
+    cout << message << endl;
+}

@@ -35,11 +35,12 @@ int getConsoleWidth();
 
 void margin();
 void loadingScreen();
+void displayWarning(string message);
 
 void displayHeader(string title);
 void displaySection(string title);
 void displaySuccess(string message);
 void displayError(string message);
 void displayPath(string path);
-
+void displayInfo(string message);
 #endif

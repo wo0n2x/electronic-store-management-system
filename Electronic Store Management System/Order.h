@@ -8,3 +8,6 @@ void orderManagementMenu(sql::Connection* con);
 void cancelOrder(sql::Connection* con);
 
 void restoreOrder(sql::Connection* con);
+
+void processPayment(sql::Connection* con);
+void viewOrders(sql::Connection* con);

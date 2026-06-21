@@ -1,23 +1,957 @@
-﻿#include "Product.h"
+#include "Product.h"
 #include "Utility.h"
 
-#include <iostream>
-#include <string>
+#include <cctype>
+#include <cstdio>
 #include <iomanip>
+#include <iostream>
+#include <limits>
+#include <sstream>
+#include <string>
+#include <vector>
 
+#include <cppconn/exception.h>
 #include <cppconn/prepared_statement.h>
 #include <cppconn/resultset.h>
 #include <cppconn/statement.h>
-#include <cppconn/exception.h>
 
 using namespace std;
-#define cout std::cout
 
 void viewProducts(sql::Connection* con);
 void searchProduct(sql::Connection* con);
 void updateProduct(sql::Connection* con);
 void deleteProduct(sql::Connection* con);
 void restoreProduct(sql::Connection* con);
+
+namespace
+{
+    void viewProducts(
+        sql::Connection* con,
+        string headerTitle,
+        string breadcrumbPath
+    );
+
+    void viewInactiveProducts(
+        sql::Connection* con,
+        string headerTitle,
+        string breadcrumbPath
+    );
+}
+
+namespace
+{
+    const int PRODUCT_TABLE_WIDTH = 101;
+    const int INACTIVE_PRODUCT_TABLE_WIDTH = 55;
+    const int PRODUCTS_PER_PAGE = 15;
+
+    struct ProductInfo
+    {
+        string productID;
+        string productName;
+        string brand;
+        double price = 0;
+        int stockQty = 0;
+        string description;
+        int categoryID = 0;
+        string categoryName;
+    };
+
+    struct InactiveProductRow
+    {
+        string productID;
+        string productName;
+    };
+
+    void discardLine()
+    {
+        cin.ignore(
+            numeric_limits<streamsize>::max(),
+            '\n'
+        );
+    }
+
+    string moneyText(double value)
+    {
+        ostringstream stream;
+
+        stream << "RM "
+            << fixed
+            << setprecision(2)
+            << value;
+
+        return stream.str();
+    }
+
+    string fitText(string text, int width)
+    {
+        if (static_cast<int>(text.length()) <= width)
+        {
+            return text;
+        }
+
+        if (width <= 3)
+        {
+            return text.substr(0, width);
+        }
+
+        return text.substr(0, width - 3) + "...";
+    }
+
+    void printLine(int width = PRODUCT_TABLE_WIDTH)
+    {
+        margin();
+        cout << string(width, '-') << endl;
+    }
+
+    void printPrompt(string prompt)
+    {
+        margin();
+        cout << prompt;
+    }
+
+
+
+    bool confirmAction(string prompt)
+    {
+        char confirm;
+
+        printPrompt(prompt + " (Y/N): ");
+        cin >> confirm;
+        discardLine();
+
+        return toupper(confirm) == 'Y';
+    }
+
+    bool readChoice(string prompt, int& choice, int minValue, int maxValue)
+    {
+        printPrompt(prompt);
+
+        while (!(cin >> choice) ||
+            choice < minValue ||
+            choice > maxValue)
+        {
+            cin.clear();
+            discardLine();
+
+            displayError(
+                "Please enter a number between " +
+                to_string(minValue) +
+                " and " +
+                to_string(maxValue) +
+                "."
+            );
+
+            printPrompt(prompt);
+        }
+
+        discardLine();
+
+        return true;
+    }
+
+    void readRequiredText(string prompt, string& value)
+    {
+        printPrompt(prompt);
+        getline(cin, value);
+
+        while (value.empty())
+        {
+            displayError("This field cannot be empty.");
+            printPrompt(prompt);
+            getline(cin, value);
+        }
+    }
+
+    bool readPositiveDouble(string prompt, double& value)
+    {
+        printPrompt(prompt);
+
+        while (!(cin >> value) || value <= 0)
+        {
+            cin.clear();
+            discardLine();
+
+            displayError("Please enter a valid amount greater than 0.");
+            printPrompt(prompt);
+        }
+
+        discardLine();
+
+        return true;
+    }
+
+    bool readNonNegativeInt(string prompt, int& value)
+    {
+        printPrompt(prompt);
+
+        while (!(cin >> value) || value < 0)
+        {
+            cin.clear();
+            discardLine();
+
+            displayError("Please enter a whole number of 0 or higher.");
+            printPrompt(prompt);
+        }
+
+        discardLine();
+
+        return true;
+    }
+
+    bool parseDouble(string input, double& value)
+    {
+        istringstream stream(input);
+        char extra;
+
+        return (stream >> value) &&
+            !(stream >> extra);
+    }
+
+    bool parseInt(string input, int& value)
+    {
+        istringstream stream(input);
+        char extra;
+
+        return (stream >> value) &&
+            !(stream >> extra);
+    }
+
+    bool categoryExists(sql::Connection* con, int categoryID)
+    {
+        sql::PreparedStatement* stmt = nullptr;
+        sql::ResultSet* res = nullptr;
+
+        try
+        {
+            stmt = con->prepareStatement(
+                "SELECT CategoryID "
+                "FROM PRODUCTCATEGORY "
+                "WHERE CategoryID = ?"
+            );
+
+            stmt->setInt(1, categoryID);
+            res = stmt->executeQuery();
+
+            bool exists = res->next();
+
+            delete res;
+            delete stmt;
+
+            return exists;
+        }
+        catch (sql::SQLException&)
+        {
+            delete res;
+            delete stmt;
+
+            return false;
+        }
+    }
+
+    string getCategoryName(sql::Connection* con, int categoryID)
+    {
+        sql::PreparedStatement* stmt = nullptr;
+        sql::ResultSet* res = nullptr;
+
+        try
+        {
+            stmt = con->prepareStatement(
+                "SELECT CategoryName "
+                "FROM PRODUCTCATEGORY "
+                "WHERE CategoryID = ?"
+            );
+
+            stmt->setInt(1, categoryID);
+            res = stmt->executeQuery();
+
+            string categoryName =
+                "Category " + to_string(categoryID);
+
+            if (res->next())
+            {
+                categoryName =
+                    res->getString("CategoryName");
+            }
+
+            delete res;
+            delete stmt;
+
+            return categoryName;
+        }
+        catch (sql::SQLException&)
+        {
+            delete res;
+            delete stmt;
+
+            return "Category " + to_string(categoryID);
+        }
+    }
+
+    int readValidCategory(sql::Connection* con, string prompt)
+    {
+        int categoryID;
+
+        printPrompt(prompt);
+
+        while (!(cin >> categoryID) ||
+            !categoryExists(con, categoryID))
+        {
+            cin.clear();
+            discardLine();
+
+            displayError("Please select an existing category ID.");
+            printPrompt(prompt);
+        }
+
+        discardLine();
+
+        return categoryID;
+    }
+
+    string readOptionalText(string prompt, string currentValue)
+    {
+        string input;
+
+        printPrompt(prompt);
+        getline(cin, input);
+
+        if (input.empty())
+        {
+            return currentValue;
+        }
+
+        return input;
+    }
+
+    double readOptionalPrice(string prompt, double currentValue)
+    {
+        string input;
+        double value;
+
+        while (true)
+        {
+            printPrompt(prompt);
+            getline(cin, input);
+
+            if (input.empty())
+            {
+                return currentValue;
+            }
+
+            if (parseDouble(input, value) && value > 0)
+            {
+                return value;
+            }
+
+            displayError("Please enter a valid amount greater than 0.");
+        }
+    }
+
+    int readOptionalStock(string prompt, int currentValue)
+    {
+        string input;
+        int value;
+
+        while (true)
+        {
+            printPrompt(prompt);
+            getline(cin, input);
+
+            if (input.empty())
+            {
+                return currentValue;
+            }
+
+            if (parseInt(input, value) && value >= 0)
+            {
+                return value;
+            }
+
+            displayError("Please enter a whole number of 0 or higher.");
+        }
+    }
+
+    int readOptionalCategory(
+        sql::Connection* con,
+        string prompt,
+        int currentValue
+    )
+    {
+        string input;
+        int value;
+
+        while (true)
+        {
+            printPrompt(prompt);
+            getline(cin, input);
+
+            if (input.empty())
+            {
+                return currentValue;
+            }
+
+            if (parseInt(input, value) &&
+                categoryExists(con, value))
+            {
+                return value;
+            }
+
+            displayError("Please select an existing category ID.");
+        }
+    }
+
+    ProductInfo readProductInfo(sql::ResultSet* res)
+    {
+        ProductInfo product;
+
+        product.productID =
+            res->getString("ProductID");
+
+        product.productName =
+            res->getString("ProductName");
+
+        product.brand =
+            res->getString("Brand");
+
+        product.price =
+            res->getDouble("Price");
+
+        product.stockQty =
+            res->getInt("StockQuantity");
+
+        product.description =
+            res->getString("ProductDescription");
+
+        product.categoryID =
+            res->getInt("CategoryID");
+
+        product.categoryName =
+            "Category " + to_string(product.categoryID);
+
+        return product;
+    }
+
+    void displayProductDetails(ProductInfo product)
+    {
+        displaySection("PRODUCT DETAILS");
+
+        margin();
+        cout << left
+            << setw(18) << "Product ID"
+            << ": "
+            << product.productID
+            << endl;
+
+        margin();
+        cout << left
+            << setw(18) << "Product Name"
+            << ": "
+            << product.productName
+            << endl;
+
+        margin();
+        cout << left
+            << setw(18) << "Brand"
+            << ": "
+            << product.brand
+            << endl;
+
+        margin();
+        cout << left
+            << setw(18) << "Price"
+            << ": "
+            << moneyText(product.price)
+            << endl;
+
+        margin();
+        cout << left
+            << setw(18) << "Stock Quantity"
+            << ": "
+            << product.stockQty
+            << endl;
+
+        margin();
+        cout << left
+            << setw(18) << "Category"
+            << ": "
+            << product.categoryName;
+
+        if (product.categoryID > 0)
+        {
+            cout << " (ID "
+                << product.categoryID
+                << ")";
+        }
+
+        cout << endl;
+
+        margin();
+        cout << left
+            << setw(18) << "Description"
+            << ": "
+            << product.description
+            << endl;
+    }
+
+    void displayProductTableHeader(string title)
+    {
+        displaySection(title);
+
+        margin();
+        cout << left
+            << setw(10) << "ID"
+            << setw(28) << "Product Name"
+            << setw(18) << "Brand"
+            << setw(13) << "Price"
+            << setw(10) << "Stock"
+            << setw(22) << "Category"
+            << endl;
+
+        printLine();
+    }
+
+    void displayProductTableRow(
+        string productID,
+        string productName,
+        string brand,
+        double price,
+        int stockQty,
+        string categoryName
+    )
+    {
+        margin();
+        cout << left
+            << setw(10) << fitText(productID, 9)
+            << setw(28) << fitText(productName, 27)
+            << setw(18) << fitText(brand, 17)
+            << setw(13) << moneyText(price)
+            << setw(10) << stockQty
+            << setw(22) << fitText(categoryName, 21)
+            << endl;
+    }
+
+    void displayProductTotal(
+        string label,
+        int count,
+        int width = PRODUCT_TABLE_WIDTH
+    )
+    {
+        printLine(width);
+
+        margin();
+        cout << label
+            << " : "
+            << count
+            << endl;
+    }
+
+    void displayInactiveProductTableHeader()
+    {
+        displaySection("INACTIVE PRODUCTS");
+
+        margin();
+        cout << left
+            << setw(15) << "Product ID"
+            << setw(40) << "Product Name"
+            << endl;
+
+        printLine(INACTIVE_PRODUCT_TABLE_WIDTH);
+    }
+
+    void displayInactiveProductTableRow(
+        string productID,
+        string productName
+    )
+    {
+        margin();
+        cout << left
+            << setw(15) << fitText(productID, 14)
+            << setw(40) << fitText(productName, 39)
+            << endl;
+    }
+
+    void displayPaginationStatus(
+        int currentPage,
+        int totalPages,
+        int firstItem,
+        int lastItem,
+        int totalItems
+    )
+    {
+        margin();
+        cout << "Page "
+            << currentPage + 1
+            << " of "
+            << totalPages
+            << " | Showing "
+            << firstItem
+            << "-"
+            << lastItem
+            << " of "
+            << totalItems
+            << endl;
+    }
+
+    char readPaginationCommand()
+    {
+        char command;
+
+        cout << "\n";
+        printPrompt("[N] Next  [P] Previous  [Q] Quit : ");
+        cin >> command;
+        discardLine();
+
+        return static_cast<char>(
+            toupper(static_cast<unsigned char>(command))
+        );
+    }
+
+    void showActiveProductPage(
+        const vector<ProductInfo>& products,
+        int currentPage,
+        string headerTitle,
+        string breadcrumbPath
+    )
+    {
+        clearScreen();
+        displayHeader(headerTitle);
+        displayPath(breadcrumbPath);
+
+        int totalItems =
+            static_cast<int>(products.size());
+
+        int firstIndex =
+            currentPage * PRODUCTS_PER_PAGE;
+
+        int lastIndex =
+            firstIndex + PRODUCTS_PER_PAGE;
+
+        if (lastIndex > totalItems)
+        {
+            lastIndex = totalItems;
+        }
+
+        displayProductTableHeader("ACTIVE PRODUCTS");
+
+        for (int index = firstIndex; index < lastIndex; index++)
+        {
+            displayProductTableRow(
+                products[index].productID,
+                products[index].productName,
+                products[index].brand,
+                products[index].price,
+                products[index].stockQty,
+                products[index].categoryName
+            );
+        }
+
+        displayProductTotal("Total Active Products", totalItems);
+    }
+
+    void showInactiveProductPage(
+        const vector<InactiveProductRow>& products,
+        int currentPage,
+        string headerTitle,
+        string breadcrumbPath
+    )
+    {
+        clearScreen();
+        displayHeader(headerTitle);
+        displayPath(breadcrumbPath);
+
+        int totalItems =
+            static_cast<int>(products.size());
+
+        int firstIndex =
+            currentPage * PRODUCTS_PER_PAGE;
+
+        int lastIndex =
+            firstIndex + PRODUCTS_PER_PAGE;
+
+        if (lastIndex > totalItems)
+        {
+            lastIndex = totalItems;
+        }
+
+        displayInactiveProductTableHeader();
+
+        for (int index = firstIndex; index < lastIndex; index++)
+        {
+            displayInactiveProductTableRow(
+                products[index].productID,
+                products[index].productName
+            );
+        }
+
+        displayProductTotal(
+            "Total Inactive Products",
+            totalItems,
+            INACTIVE_PRODUCT_TABLE_WIDTH
+        );
+    }
+
+    void paginateActiveProducts(
+        const vector<ProductInfo>& products,
+        string headerTitle,
+        string breadcrumbPath
+    )
+    {
+        int totalItems =
+            static_cast<int>(products.size());
+
+        if (totalItems == 0)
+        {
+            clearScreen();
+            displayHeader(headerTitle);
+            displayPath(breadcrumbPath);
+            displayProductTableHeader("ACTIVE PRODUCTS");
+            displayProductTotal("Total Active Products", 0);
+            return;
+        }
+
+        int totalPages =
+            (totalItems + PRODUCTS_PER_PAGE - 1) /
+            PRODUCTS_PER_PAGE;
+
+        int currentPage = 0;
+
+        while (true)
+        {
+            showActiveProductPage(
+                products,
+                currentPage,
+                headerTitle,
+                breadcrumbPath
+            );
+
+            int firstItem =
+                currentPage * PRODUCTS_PER_PAGE + 1;
+
+            int lastItem =
+                (currentPage + 1) * PRODUCTS_PER_PAGE;
+
+            if (lastItem > totalItems)
+            {
+                lastItem = totalItems;
+            }
+
+            displayPaginationStatus(
+                currentPage,
+                totalPages,
+                firstItem,
+                lastItem,
+                totalItems
+            );
+
+            char command =
+                readPaginationCommand();
+
+            if (command == 'Q')
+            {
+                return;
+            }
+
+            if (command == 'N')
+            {
+                if (currentPage < totalPages - 1)
+                {
+                    currentPage++;
+                }
+                else
+                {
+                    displayInfo("You are already on the last page.");
+                }
+            }
+            else if (command == 'P')
+            {
+                if (currentPage > 0)
+                {
+                    currentPage--;
+                }
+                else
+                {
+                    displayInfo("You are already on the first page.");
+                }
+            }
+            else
+            {
+                displayError("Please enter N, P, or Q.");
+            }
+        }
+    }
+
+    void paginateInactiveProducts(
+        const vector<InactiveProductRow>& products,
+        string headerTitle,
+        string breadcrumbPath
+    )
+    {
+        int totalItems =
+            static_cast<int>(products.size());
+
+        if (totalItems == 0)
+        {
+            clearScreen();
+            displayHeader(headerTitle);
+            displayPath(breadcrumbPath);
+            displayInactiveProductTableHeader();
+            displayProductTotal(
+                "Total Inactive Products",
+                0,
+                INACTIVE_PRODUCT_TABLE_WIDTH
+            );
+
+            return;
+        }
+
+        int totalPages =
+            (totalItems + PRODUCTS_PER_PAGE - 1) /
+            PRODUCTS_PER_PAGE;
+
+        int currentPage = 0;
+
+        while (true)
+        {
+            showInactiveProductPage(
+                products,
+                currentPage,
+                headerTitle,
+                breadcrumbPath
+            );
+
+            int firstItem =
+                currentPage * PRODUCTS_PER_PAGE + 1;
+
+            int lastItem =
+                (currentPage + 1) * PRODUCTS_PER_PAGE;
+
+            if (lastItem > totalItems)
+            {
+                lastItem = totalItems;
+            }
+
+            displayPaginationStatus(
+                currentPage,
+                totalPages,
+                firstItem,
+                lastItem,
+                totalItems
+            );
+
+            char command =
+                readPaginationCommand();
+
+            if (command == 'Q')
+            {
+                return;
+            }
+
+            if (command == 'N')
+            {
+                if (currentPage < totalPages - 1)
+                {
+                    currentPage++;
+                }
+                else
+                {
+                    displayInfo("You are already on the last page.");
+                }
+            }
+            else if (command == 'P')
+            {
+                if (currentPage > 0)
+                {
+                    currentPage--;
+                }
+                else
+                {
+                    displayInfo("You are already on the first page.");
+                }
+            }
+            else
+            {
+                displayError("Please enter N, P, or Q.");
+            }
+        }
+    }
+
+    void displayChanges(
+        ProductInfo oldProduct,
+        ProductInfo newProduct
+    )
+    {
+        displaySection("PRODUCT CHANGES");
+
+        margin();
+        cout << left
+            << setw(20) << "Field"
+            << setw(32) << "Old Value"
+            << setw(32) << "New Value"
+            << endl;
+
+        margin();
+        cout << string(84, '-') << endl;
+
+        int changeCount = 0;
+
+        auto printChange =
+            [&changeCount](string field, string oldValue, string newValue)
+            {
+                if (oldValue != newValue)
+                {
+                    margin();
+                    cout << left
+                        << setw(20) << field
+                        << setw(32) << fitText(oldValue, 31)
+                        << setw(32) << fitText(newValue, 31)
+                        << endl;
+
+                    changeCount++;
+                }
+            };
+
+        printChange(
+            "Name",
+            oldProduct.productName,
+            newProduct.productName
+        );
+
+        printChange(
+            "Brand",
+            oldProduct.brand,
+            newProduct.brand
+        );
+
+        printChange(
+            "Price",
+            moneyText(oldProduct.price),
+            moneyText(newProduct.price)
+        );
+
+        printChange(
+            "Stock Qty",
+            to_string(oldProduct.stockQty),
+            to_string(newProduct.stockQty)
+        );
+
+        printChange(
+            "Category",
+            oldProduct.categoryName,
+            newProduct.categoryName
+        );
+
+        printChange(
+            "Description",
+            oldProduct.description,
+            newProduct.description
+        );
+
+        if (changeCount == 0)
+        {
+            displayInfo("No fields were changed.");
+        }
+    }
+}
 
 //generate productID
 string generateProductID(sql::Connection* con)
@@ -63,6 +997,21 @@ string generateProductID(sql::Connection* con)
 
 void viewInactiveProducts(sql::Connection* con)
 {
+    viewInactiveProducts(
+        con,
+        "RESTORE PRODUCT",
+        "HOME > PRODUCT MANAGEMENT > RESTORE PRODUCT"
+    );
+}
+
+namespace
+{
+void viewInactiveProducts(
+    sql::Connection* con,
+    string headerTitle,
+    string breadcrumbPath
+)
+{
     try
     {
         sql::Statement* stmt;
@@ -77,59 +1026,35 @@ void viewInactiveProducts(sql::Connection* con)
             "ORDER BY ProductID"
         );
 
-        cout << "\n";
-
-        margin();
-        cout << "============================================================\n";
-
-        margin();
-        cout << "INACTIVE PRODUCT LIST\n";
-
-        margin();
-        cout << "============================================================\n";
-
-        margin();
-        cout << left
-            << setw(15) << "PRODUCT ID"
-            << setw(35) << "PRODUCT NAME"
-            << endl;
-
-        margin();
-        cout << "============================================================\n";
-
-        int count = 0;
+        vector<InactiveProductRow> products;
 
         while (res->next())
         {
-            margin();
+            InactiveProductRow product;
 
-            cout << left
-                << setw(15) << res->getString("ProductID")
-                << setw(35) << res->getString("ProductName")
-                << endl;
+            product.productID =
+                res->getString("ProductID");
 
-            count++;
+            product.productName =
+                res->getString("ProductName");
+
+            products.push_back(product);
         }
 
-        margin();
-        cout << "============================================================\n";
-
-        margin();
-        cout << "Total Inactive Products : "
-            << count
-            << endl;
+        paginateInactiveProducts(
+            products,
+            headerTitle,
+            breadcrumbPath
+        );
 
         delete res;
         delete stmt;
     }
     catch (sql::SQLException& e)
     {
-        margin();
-
-        cout << "\n[ERROR] "
-            << e.what()
-            << endl;
+        displayError(e.what());
     }
+}
 }
 
 //display Categories
@@ -146,24 +1071,33 @@ void displayCategories(sql::Connection* con)
             "SELECT * FROM PRODUCTCATEGORY"
         );
 
-        cout  << "\nAvailable Categories\n";
-        cout << "--------------------\n";
+        displaySection("AVAILABLE CATEGORIES");
+
+        margin();
+        cout << left
+            << setw(12) << "ID"
+            << setw(35) << "Category Name"
+            << endl;
+
+        printLine(47);
 
         while (res->next())
         {
-            cout
-                << res->getInt("CategoryID")
-                << ". "
-                << res->getString("CategoryName")
+            margin();
+            cout << left
+                << setw(12) << res->getInt("CategoryID")
+                << setw(35) << res->getString("CategoryName")
                 << endl;
         }
+
+        printLine(47);
 
         delete res;
         delete stmt;
     }
-    catch (...)
+    catch (sql::SQLException& e)
     {
-        cout << "\nUnable to load categories.\n";
+        displayError(e.what());
     }
 }
 
@@ -180,85 +1114,22 @@ void addProduct(sql::Connection* con)
     int stockQty;
     int categoryID;
 
-    cin.ignore();
+    displayHeader("ADD PRODUCT");
+    displayPath("HOME > PRODUCT MANAGEMENT > ADD PRODUCT");
 
-    cout << "\n========== ADD PRODUCT ==========\n";
+    readRequiredText("Product Name      : ", productName);
+    readRequiredText("Brand             : ", brand);
+    readPositiveDouble("Price             : ", price);
+    readNonNegativeInt("Stock Quantity    : ", stockQty);
+    readRequiredText("Description       : ", description);
 
-    cout << "Product Name: ";
-    getline(cin, productName);
-
-    cout << "Brand: ";
-    getline(cin, brand);
-
-    cout << "Price: ";
-
-    while (!(cin >> price) || price <= 0)
-    {
-        cin.clear();
-        cin.ignore(1000, '\n');
-
-        cout << "\nInvalid price!";
-        cout << "\nPlease enter a valid number.";
-
-        cout << "\n\nPrice: ";
-    }
-
-    cout << "Stock Quantity: ";
-
-    while (!(cin >> stockQty) || stockQty < 0)
-    {
-        cin.clear();
-        cin.ignore(1000, '\n');
-
-        cout << "\nInvalid quantity!";
-        cout << "\nPlease enter a valid number.";
-
-        cout << "\n\nStock Quantity: ";
-    }
-
-    cin.ignore();
-
-    cout << "Description: ";
-    getline(cin, description);
-
+    cout << "\n";
     displayCategories(con);
+    cout << "\n";
 
-    cout << "\nSelect Category ID: ";
-    cin >> categoryID;
+    categoryID =
+        readValidCategory(con, "Select Category ID : ");
 
-    bool validCategory = false;
-
-    while (!validCategory)
-    {
-        sql::PreparedStatement* checkStmt;
-        sql::ResultSet* checkRes;
-
-        checkStmt = con->prepareStatement(
-            "SELECT CategoryID "
-            "FROM PRODUCTCATEGORY "
-            "WHERE CategoryID = ?"
-        );
-
-        checkStmt->setInt(1, categoryID);
-
-        checkRes = checkStmt->executeQuery();
-
-        if (checkRes->next())
-        {
-            validCategory = true;
-        }
-        else
-        {
-            cout << "\nInvalid Category ID!";
-            cout << "\nPlease select an existing category.";
-
-            cout << "\n\nSelect Category ID: ";
-            cin >> categoryID;
-        }
-
-        delete checkRes;
-        delete checkStmt;
-    }
     try
     {
         sql::PreparedStatement* pstmt;
@@ -281,14 +1152,18 @@ void addProduct(sql::Connection* con)
 
         pstmt->executeUpdate();
 
-        cout << "\nProduct added successfully!\n";
-        cout << "Product ID : " << productID << endl;
+        displaySuccess("Product added successfully.");
+
+        margin();
+        cout << "Product ID : "
+            << productID
+            << endl;
 
         delete pstmt;
     }
     catch (sql::SQLException& e)
     {
-        cout << "\nError: " << e.what() << endl;
+        displayError(e.what());
     }
 }
 
@@ -297,12 +1172,16 @@ void updateProduct(sql::Connection* con)
 {
     string productID;
 
-    cout << "\n==================================================\n";
-    cout << "                UPDATE PRODUCT\n";
-    cout << "==================================================\n";
+    viewProducts(
+        con,
+        "UPDATE PRODUCT",
+        "HOME > PRODUCT MANAGEMENT > UPDATE PRODUCT"
+    );
 
-    cout << "\nEnter Product ID : ";
+    cout << "\n";
+    printPrompt("Enter Product ID : ");
     cin >> productID;
+    discardLine();
 
     try
     {
@@ -321,7 +1200,7 @@ void updateProduct(sql::Connection* con)
 
         if (!res->next())
         {
-            cout << "\nProduct not found!\n";
+            displayError("Product not found or inactive.");
 
             delete res;
             delete pstmt;
@@ -329,34 +1208,20 @@ void updateProduct(sql::Connection* con)
             return;
         }
 
-        string productName =
-            res->getString("ProductName");
+        ProductInfo product =
+            readProductInfo(res);
 
-        string brand =
-            res->getString("Brand");
-
-        double price =
-            res->getDouble("Price");
-
-        int stockQty =
-            res->getInt("StockQuantity");
-
-        string description =
-            res->getString("ProductDescription");
-
-        int categoryID =
-            res->getInt("CategoryID");
-
-        // Backup old values
-        string oldName = productName;
-        string oldBrand = brand;
-        double oldPrice = price;
-        int oldStock = stockQty;
-        string oldDescription = description;
-        int oldCategory = categoryID;
+        ProductInfo oldProduct =
+            product;
 
         delete res;
         delete pstmt;
+
+        product.categoryName =
+            getCategoryName(con, product.categoryID);
+
+        oldProduct.categoryName =
+            product.categoryName;
 
         int choice;
 
@@ -364,103 +1229,100 @@ void updateProduct(sql::Connection* con)
         {
             clearScreen();
 
-            cout << "==================================================\n";
-            cout << "              PRODUCT CONTROL PANEL\n";
-            cout << "==================================================\n\n";
+            displayHeader("PRODUCT CONTROL PANEL");
+            displayPath("HOME > PRODUCT MANAGEMENT > UPDATE PRODUCT");
 
-            cout << " Product ID     : "
-                << productID << endl;
+            displayProductDetails(product);
 
-            cout << " Product Name   : "
-                << productName << endl;
+            cout << "\n";
+            displaySection("UPDATE OPTIONS");
 
-            cout << " Brand          : "
-                << brand << endl;
-
-            cout << " Price          : RM "
-                << fixed << setprecision(2)
-                << price << endl;
-
-            cout << " Stock Quantity : "
-                << stockQty << endl;
-
-            cout << " Category ID    : "
-                << categoryID << endl;
-
-            cout << " Description    : "
-                << description << endl;
-
-            cout << "\n==================================================\n";
-
-            cout << "\nWhat would you like to update?\n\n";
-
+            margin();
             cout << "1. Product Name\n";
+            margin();
             cout << "2. Brand\n";
+            margin();
             cout << "3. Price\n";
+            margin();
             cout << "4. Stock Quantity\n";
+            margin();
             cout << "5. Category\n";
+            margin();
             cout << "6. Description\n";
+            margin();
             cout << "7. Save Changes\n";
-            cout << "8. Cancel\n";
+            margin();
+            cout << "8. Cancel\n\n";
 
-            cout << "\nSelect Option : ";
-
-            while (!(cin >> choice) || choice < 1 || choice > 8)
-            {
-                cin.clear();
-                cin.ignore(1000, '\n');
-
-                cout << "\nInvalid option!";
-                cout << "\nPlease enter a number between 1 - 8.";
-
-                cout << "\n\nSelect Option : ";
-            }
-
-            cin.ignore(1000, '\n');
+            readChoice("Select Option : ", choice, 1, 8);
 
             switch (choice)
             {
             case 1:
 
-                cout << "\nNew Product Name : ";
-                getline(cin, productName);
+                product.productName =
+                    readOptionalText(
+                        "New Product Name (Enter to keep current): ",
+                        product.productName
+                    );
 
                 break;
 
             case 2:
 
-                cout << "\nNew Brand : ";
-                getline(cin, brand);
+                product.brand =
+                    readOptionalText(
+                        "New Brand (Enter to keep current)       : ",
+                        product.brand
+                    );
 
                 break;
 
             case 3:
 
-                cout << "\nNew Price : ";
-                cin >> price;
+                product.price =
+                    readOptionalPrice(
+                        "New Price (Enter to keep current)       : ",
+                        product.price
+                    );
 
                 break;
 
             case 4:
 
-                cout << "\nNew Stock Quantity : ";
-                cin >> stockQty;
+                product.stockQty =
+                    readOptionalStock(
+                        "New Stock (Enter to keep current)       : ",
+                        product.stockQty
+                    );
 
                 break;
 
             case 5:
 
+                cout << "\n";
                 displayCategories(con);
+                cout << "\n";
 
-                cout << "\nSelect New Category ID : ";
-                cin >> categoryID;
+                product.categoryID =
+                    readOptionalCategory(
+                        con,
+                        "New Category ID (Enter to keep current) : ",
+                        product.categoryID
+                    );
+
+                product.categoryName =
+                    getCategoryName(con, product.categoryID);
 
                 break;
 
             case 6:
 
-                cout << "\nNew Description : ";
-                getline(cin, description);
+                product.description =
+                    readOptionalText(
+                        "New Description (Enter to keep current) : ",
+                        product.description
+                    );
 
                 break;
 
@@ -468,80 +1330,14 @@ void updateProduct(sql::Connection* con)
 
                 clearScreen();
 
-                cout << "==============================================================\n";
-                cout << "                    PRODUCT CHANGES\n";
-                cout << "==============================================================\n\n";
+                displayHeader("SAVE PRODUCT CHANGES");
+                displayPath("HOME > PRODUCT MANAGEMENT > UPDATE PRODUCT");
 
-                cout << left
-                    << setw(20) << "FIELD"
-                    << setw(25) << "OLD VALUE"
-                    << setw(25) << "NEW VALUE"
-                    << endl;
+                displayChanges(oldProduct, product);
 
-                cout << "--------------------------------------------------------------\n";
+                cout << "\n";
 
-                if (oldName != productName)
-                {
-                    cout << left
-                        << setw(20) << "Name"
-                        << setw(25) << oldName
-                        << setw(25) << productName
-                        << endl;
-                }
-
-                if (oldBrand != brand)
-                {
-                    cout << left
-                        << setw(20) << "Brand"
-                        << setw(25) << oldBrand
-                        << setw(25) << brand
-                        << endl;
-                }
-
-                if (oldPrice != price)
-                {
-                    cout << left
-                        << setw(20) << "Price"
-                        << setw(25) << oldPrice
-                        << setw(25) << price
-                        << endl;
-                }
-
-                if (oldStock != stockQty)
-                {
-                    cout << left
-                        << setw(20) << "Stock Qty"
-                        << setw(25) << oldStock
-                        << setw(25) << stockQty
-                        << endl;
-                }
-
-                if (oldCategory != categoryID)
-                {
-                    cout << left
-                        << setw(20) << "Category ID"
-                        << setw(25) << oldCategory
-                        << setw(25) << categoryID
-                        << endl;
-                }
-
-                if (oldDescription != description)
-                {
-                    cout << left
-                        << setw(20) << "Description"
-                        << setw(25) << oldDescription
-                        << setw(25) << description
-                        << endl;
-                }
-
-                cout << "\n==============================================================\n";
-
-                char confirm;
-
-                cout << "\nSave Changes? (Y/N): ";
-                cin >> confirm;
-
-                if (toupper(confirm) == 'Y')
+                if (confirmAction("Save changes?"))
                 {
                     pstmt = con->prepareStatement(
                         "UPDATE PRODUCT "
@@ -554,47 +1350,38 @@ void updateProduct(sql::Connection* con)
                         "WHERE ProductID=?"
                     );
 
-                    pstmt->setString(1, productName);
-                    pstmt->setString(2, brand);
-                    pstmt->setDouble(3, price);
-                    pstmt->setInt(4, stockQty);
-                    pstmt->setString(5, description);
-                    pstmt->setInt(6, categoryID);
-                    pstmt->setString(7, productID);
+                    pstmt->setString(1, product.productName);
+                    pstmt->setString(2, product.brand);
+                    pstmt->setDouble(3, product.price);
+                    pstmt->setInt(4, product.stockQty);
+                    pstmt->setString(5, product.description);
+                    pstmt->setInt(6, product.categoryID);
+                    pstmt->setString(7, product.productID);
 
                     pstmt->executeUpdate();
 
-                    cout << "\n\n========================================\n";
-                    cout << "   PRODUCT UPDATED SUCCESSFULLY\n";
-                    cout << "========================================\n";
+                    displaySuccess("Product updated successfully.");
+
                     delete pstmt;
                 }
                 else
                 {
-                    cout << "\nChanges discarded.\n";
+                    displayInfo("Changes discarded.");
                 }
 
-                pauseScreen();
                 return;
 
             case 8:
 
-                cout << "\nUpdate cancelled.\n";
+                displayInfo("Update cancelled.");
                 return;
-
-            default:
-
-                cout << "\nInvalid option!\n";
-                pauseScreen();
             }
 
         } while (true);
     }
     catch (sql::SQLException& e)
     {
-        cout << "\nDatabase Error : "
-            << e.what()
-            << endl;
+        displayError(e.what());
     }
 }
 
@@ -607,30 +1394,25 @@ void productManagementMenu(sql::Connection* con)
     {
         clearScreen();
 
-        cout << "========================================\n";
-        cout << "         PRODUCT MANAGEMENT\n";
-        cout << "========================================\n";
+        displayHeader("PRODUCT MANAGEMENT");
+        displayPath("HOME > PRODUCT MANAGEMENT");
 
+        margin();
         cout << "1. Add Product\n";
+        margin();
         cout << "2. Update Product\n";
+        margin();
         cout << "3. Delete Product\n";
+        margin();
         cout << "4. Restore Product\n";
+        margin();
         cout << "5. Search Product\n";
+        margin();
         cout << "6. View Products\n";
-        cout << "7. Back\n";
+        margin();
+        cout << "7. Back\n\n";
 
-        cout << "\nEnter Choice: ";
-
-        while (!(cin >> choice) || choice < 1 || choice > 7)
-        {
-            cin.clear();
-            cin.ignore(1000, '\n');
-
-            cout << "\nInvalid input!";
-            cout << "\nPlease enter a number between 1 - 7.";
-
-            cout << "\n\nEnter Choice: ";
-        }
+        readChoice("Enter Choice: ", choice, 1, 7);
 
         switch (choice)
         {
@@ -697,11 +1479,6 @@ void productManagementMenu(sql::Connection* con)
         case 7:
 
             return;
-
-        default:
-
-            cout << "\nInvalid option!\n";
-            pauseScreen();
         }
 
     } while (true);
@@ -712,18 +1489,17 @@ void deleteProduct(sql::Connection* con)
 {
     string productID;
 
-    displayHeader("DELETE PRODUCT");
-    displayPath("HOME > PRODUCT MANAGEMENT > DELETE PRODUCT");
-
-    viewProducts(con);
+    viewProducts(
+        con,
+        "DELETE PRODUCT",
+        "HOME > PRODUCT MANAGEMENT > DELETE PRODUCT"
+    );
 
     cout << "\n";
-
-    margin();
-    cout << "Enter Product ID : ";
-
+    printPrompt("Enter Product ID : ");
     cin >> productID;
-    viewProducts(con);
+    discardLine();
+
     try
     {
         sql::PreparedStatement* pstmt;
@@ -741,7 +1517,7 @@ void deleteProduct(sql::Connection* con)
 
         if (!res->next())
         {
-            cout << "\nProduct not found or already inactive!\n";
+            displayError("Product not found or already inactive.");
 
             delete res;
             delete pstmt;
@@ -749,80 +1525,30 @@ void deleteProduct(sql::Connection* con)
             return;
         }
 
-        string productName =
-            res->getString("ProductName");
-
-        string brand =
-            res->getString("Brand");
-
-        double price =
-            res->getDouble("Price");
-
-        int stockQty =
-            res->getInt("StockQuantity");
-
-        int categoryID =
-            res->getInt("CategoryID");
+        ProductInfo product =
+            readProductInfo(res);
 
         delete res;
         delete pstmt;
 
+        product.categoryName =
+            getCategoryName(con, product.categoryID);
+
         clearScreen();
 
-        cout << "==================================================\n";
-        cout << "                DELETE PRODUCT\n";
-        cout << "==================================================\n\n";
+        displayHeader("DELETE PRODUCT");
+        displayPath("HOME > PRODUCT MANAGEMENT > DELETE PRODUCT");
 
-        margin();
-        cout << "Product ID     : "
-            << productID
-            << endl;
+        displayProductDetails(product);
 
-        margin();
-        cout << "Product Name   : "
-            << productName
-            << endl;
-
-        margin();
-        cout << "Brand          : "
-            << brand
-            << endl;
-
-        margin();
-        cout << "Price          : RM "
-            << fixed << setprecision(2)
-            << price
-            << endl;
-
-        margin();
-        cout << "Stock Quantity : "
-            << stockQty
-            << endl;
-
-        margin();
-        cout << "Category ID    : "
-            << categoryID
-            << endl;
-        cout << "\n==================================================\n";
+        displayWarning("This product will become inactive.");
+        displayWarning("It will no longer appear in active product lists.");
 
         cout << "\n";
 
-        margin();
-        cout << "[WARNING] This product will become INACTIVE.\n";
-
-        margin();
-        cout << "It will no longer appear in active products.\n";
-        char confirm;
-
-        margin();
-        cout << "\nDeactivate this product? (Y/N): ";
-        cin >> confirm;
-
-        if (toupper(confirm) != 'Y')
+        if (!confirmAction("Deactivate this product?"))
         {
-            margin();
-
-            cout << "\nOperation cancelled.\n";
+            displayInfo("Operation cancelled.");
             return;
         }
 
@@ -838,15 +1564,11 @@ void deleteProduct(sql::Connection* con)
 
         delete pstmt;
 
-        cout << "\n========================================\n";
-        cout << "      PRODUCT DEACTIVATED\n";
-        cout << "========================================\n";
+        displaySuccess("Product deactivated successfully.");
     }
     catch (sql::SQLException& e)
     {
-        cout << "\nDatabase Error : "
-            << e.what()
-            << endl;
+        displayError(e.what());
     }
 }
 
@@ -858,16 +1580,16 @@ void restoreProduct(sql::Connection* con)
 {
     string productID;
 
-    displayHeader("RESTORE PRODUCT");
-    displayPath("HOME > PRODUCT MANAGEMENT > RESTORE PRODUCT");
-
-    viewInactiveProducts(con);
+    viewInactiveProducts(
+        con,
+        "RESTORE PRODUCT",
+        "HOME > PRODUCT MANAGEMENT > RESTORE PRODUCT"
+    );
 
     cout << "\n";
-
-    margin();
-    cout << "Enter Product ID : ";
+    printPrompt("Enter Product ID : ");
     cin >> productID;
+    discardLine();
 
     try
     {
@@ -886,8 +1608,7 @@ void restoreProduct(sql::Connection* con)
 
         if (!res->next())
         {
-            margin();
-            cout << "[ERROR] Inactive product not found!\n";
+            displayError("Inactive product not found.");
 
             delete res;
             delete pstmt;
@@ -895,87 +1616,27 @@ void restoreProduct(sql::Connection* con)
             return;
         }
 
-        string productName =
-            res->getString("ProductName");
-
-        string brand =
-            res->getString("Brand");
-
-        double price =
-            res->getDouble("Price");
-
-        int stockQty =
-            res->getInt("StockQuantity");
-
-        int categoryID =
-            res->getInt("CategoryID");
+        ProductInfo product =
+            readProductInfo(res);
 
         delete res;
         delete pstmt;
+
+        product.categoryName =
+            getCategoryName(con, product.categoryID);
 
         clearScreen();
 
         displayHeader("PRODUCT RECOVERY");
         displayPath("HOME > PRODUCT MANAGEMENT > RESTORE PRODUCT");
 
-        cout << "\n";
-
-        margin();
-        cout << "============================================================\n";
-
-        margin();
-        cout << "Product Information\n";
-
-        margin();
-        cout << "============================================================\n";
-
-        margin();
-        cout << "Product ID     : "
-            << productID
-            << endl;
-
-        margin();
-        cout << "Product Name   : "
-            << productName
-            << endl;
-
-        margin();
-        cout << "Brand          : "
-            << brand
-            << endl;
-
-        margin();
-        cout << "Price          : RM "
-            << fixed << setprecision(2)
-            << price
-            << endl;
-
-        margin();
-        cout << "Stock Quantity : "
-            << stockQty
-            << endl;
-
-        margin();
-        cout << "Category ID    : "
-            << categoryID
-            << endl;
-
-        margin();
-        cout << "============================================================\n";
-
-        char confirm;
+        displayProductDetails(product);
 
         cout << "\n";
 
-        margin();
-        cout << "Restore this product? (Y/N): ";
-        cin >> confirm;
-
-        if (toupper(confirm) != 'Y')
+        if (!confirmAction("Restore this product?"))
         {
-            margin();
-            cout << "\n[INFO] Operation cancelled.\n";
-
+            displayInfo("Operation cancelled.");
             return;
         }
 
@@ -991,29 +1652,25 @@ void restoreProduct(sql::Connection* con)
 
         delete pstmt;
 
-        cout << "\n";
-
-        margin();
-        cout << "[SUCCESS] Product restored successfully!\n";
+        displaySuccess("Product restored successfully.");
     }
     catch (sql::SQLException& e)
     {
-        margin();
-
-        cout << "\n[ERROR] "
-            << e.what()
-            << endl;
+        displayError(e.what());
     }
 }
+
 //search Products
 void searchProduct(sql::Connection* con)
 {
     string productID;
 
-    cout << "\n========== SEARCH PRODUCT ==========\n";
+    displayHeader("SEARCH PRODUCT");
+    displayPath("HOME > PRODUCT MANAGEMENT > SEARCH PRODUCT");
 
-    cout << "Enter Product ID : ";
+    printPrompt("Enter Product ID : ");
     cin >> productID;
+    discardLine();
 
     try
     {
@@ -1041,34 +1698,34 @@ void searchProduct(sql::Connection* con)
 
         if (res->next())
         {
-            cout << "\n========================================\n";
-            cout << "         PRODUCT INFORMATION\n";
-            cout << "========================================\n";
+            ProductInfo product;
 
-            cout << "Product ID   : "
-                << res->getString("ProductID") << endl;
+            product.productID =
+                res->getString("ProductID");
 
-            cout << "Name         : "
-                << res->getString("ProductName") << endl;
+            product.productName =
+                res->getString("ProductName");
 
-            cout << "Brand        : "
-                << res->getString("Brand") << endl;
+            product.brand =
+                res->getString("Brand");
 
-            cout << "Price        : "
-                << res->getDouble("Price") << endl;
+            product.price =
+                res->getDouble("Price");
 
-            cout << "Stock Qty    : "
-                << res->getInt("StockQuantity") << endl;
+            product.stockQty =
+                res->getInt("StockQuantity");
 
-            cout << "Category     : "
-                << res->getString("CategoryName") << endl;
+            product.description =
+                res->getString("ProductDescription");
 
-            cout << "Description  : "
-                << res->getString("ProductDescription") << endl;
+            product.categoryName =
+                res->getString("CategoryName");
+
+            displayProductDetails(product);
         }
         else
         {
-            cout << "\nProduct not found!\n";
+            displayError("Product not found.");
         }
 
         delete res;
@@ -1076,12 +1733,27 @@ void searchProduct(sql::Connection* con)
     }
     catch (sql::SQLException& e)
     {
-        cout << "\nError: " << e.what() << endl;
+        displayError(e.what());
     }
 }
 
 //view Products
 void viewProducts(sql::Connection* con)
+{
+    viewProducts(
+        con,
+        "VIEW PRODUCTS",
+        "HOME > PRODUCT MANAGEMENT > VIEW PRODUCTS"
+    );
+}
+
+namespace
+{
+void viewProducts(
+    sql::Connection* con,
+    string headerTitle,
+    string breadcrumbPath
+)
 {
     try
     {
@@ -1103,39 +1775,45 @@ void viewProducts(sql::Connection* con)
             "WHERE P.Status='ACTIVE'"
         );
 
-        cout << "\n==============================================================================================\n";
-        cout << left
-            << setw(8) << "ID"
-            << setw(30) << "Product Name"
-            << setw(15) << "Brand"
-            << setw(12) << "Price"
-            << setw(10) << "Stock"
-            << setw(15) << "Category"
-            << endl;
-
-        cout << "==============================================================================================\n";
+        vector<ProductInfo> products;
 
         while (res->next())
         {
-            cout << left
-                << setw(8) << res->getString("ProductID")
-                << setw(30) << res->getString("ProductName")
-                << setw(15) << res->getString("Brand")
-                << setw(12)
-                << fixed << setprecision(2)
-                << res->getDouble("Price")
-                << setw(10) << res->getInt("StockQuantity")
-                << setw(15) << res->getString("CategoryName")
-                << endl;
+            ProductInfo product;
+
+            product.productID =
+                res->getString("ProductID");
+
+            product.productName =
+                res->getString("ProductName");
+
+            product.brand =
+                res->getString("Brand");
+
+            product.price =
+                res->getDouble("Price");
+
+            product.stockQty =
+                res->getInt("StockQuantity");
+
+            product.categoryName =
+                res->getString("CategoryName");
+
+            products.push_back(product);
         }
 
-        cout << "==============================================================================================\n";
+        paginateActiveProducts(
+            products,
+            headerTitle,
+            breadcrumbPath
+        );
 
         delete res;
         delete stmt;
     }
     catch (sql::SQLException& e)
     {
-        cout << "\nError: " << e.what() << endl;
+        displayError(e.what());
     }
+}
 }

@@ -72,27 +72,13 @@ int main()
         cout << "3. Order Management\n";
 
         margin();
-        cout << "4. Sales Management\n";
-
-        margin();
-        cout << "5. Report Management\n";
+        cout << "4. Report Management\n";
 
         if (isAdmin)
         {
             margin();
-            cout << "6. Staff Management\n";
+            cout << "5. Staff Management\n";
 
-            margin();
-            cout << "7. Logout\n";
-
-            margin();
-            cout << "8. Exit\n\n";
-
-            margin();
-            cout << "Enter your choice (1-8): ";
-        }
-        else
-        {
             margin();
             cout << "6. Logout\n";
 
@@ -101,6 +87,17 @@ int main()
 
             margin();
             cout << "Enter your choice (1-7): ";
+        }
+        else
+        {
+            margin();
+            cout << "5. Logout\n";
+
+            margin();
+            cout << "6. Exit\n\n";
+
+            margin();
+            cout << "Enter your choice (1-6): ";
         }
         cin >> choice;
 
@@ -174,7 +171,7 @@ int main()
 
             */
 
-        case 6:
+        case 5:
 
             if (isAdmin)
             {
@@ -195,7 +192,7 @@ int main()
 
             break;
 
-        case 7:
+        case 6:
 
             if (isAdmin)
             {
@@ -222,7 +219,7 @@ int main()
 
             break;
 
-        case 8:
+        case 7:
 
             if (isAdmin)
             {

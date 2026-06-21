@@ -1,6 +1,6 @@
 #include "Order.h"
 #include "Utility.h"
-
+#include <sstream>
 #include <iostream>
 #include <string>
 #include <vector>
@@ -12,7 +12,6 @@
 #include <cppconn/exception.h>
 
 using namespace std;
-
 
 //=====================================================
 // Cart Structure
@@ -55,8 +54,7 @@ void addProductToCart(
 void saveOrder(
     sql::Connection* con,
     string customerID,
-    vector<CartItem>& cart,
-    string paymentMethod
+    vector<CartItem>& cart
 );
 
 void checkoutOrder(
@@ -117,7 +115,7 @@ void displayCart(vector<CartItem>& cart)
     cout << "============================================================\n";
 }
 
-//generate OrderID
+// Generate OrderID
 string generateOrderID(sql::Connection* con)
 {
     try
@@ -136,8 +134,7 @@ string generateOrderID(sql::Connection* con)
 
         if (res->next())
         {
-            count =
-                res->getInt("TotalOrders");
+            count = res->getInt("TotalOrders");
         }
 
         delete res;
@@ -145,17 +142,20 @@ string generateOrderID(sql::Connection* con)
 
         count++;
 
-        string newID =
-            "O00" + to_string(count);
+        stringstream ss;
 
-        return newID;
+        ss << "O"
+            << setw(4)
+            << setfill('0')
+            << count;
+
+        return ss.str();
     }
     catch (...)
     {
-        return "O001";
+        return "O0001";
     }
 }
-
 void checkoutOrder(
     sql::Connection* con,
     string customerID,
@@ -169,8 +169,6 @@ void checkoutOrder(
         return;
     }
 
-    int paymentChoice;
-
     string paymentMethod;
 
     clearScreen();
@@ -180,63 +178,13 @@ void checkoutOrder(
         
     displayCart(cart);
 
-    displaySection("PAYMENT METHOD");
-
-    cout << "1. Cash\n";
-    cout << "2. Credit Card\n";
-    cout << "3. Online Banking\n";
-    cout << "4. E-Wallet\n";
-
-    cout << "\nEnter Choice : ";
-
-    while (!(cin >> paymentChoice)
-        || paymentChoice < 1
-        || paymentChoice > 4)
-    {
-        cin.clear();
-
-        cin.ignore(1000, '\n');
-
-        cout << "\nInvalid choice!";
-        cout << "\nEnter again : ";
-    }
-
-    switch (paymentChoice)
-    {
-    case 1:
-
-        paymentMethod = "Cash";
-
-        break;
-
-    case 2:
-
-        paymentMethod = "Credit Card";
-
-        break;
-
-    case 3:
-
-        paymentMethod = "Online Banking";
-
-        break;
-
-    case 4:
-
-        paymentMethod = "E-Wallet";
-
-        break;
-    }
-
     clearScreen();
 
     displayHeader("ORDER SUMMARY");
     cout << "Customer ID : "
         << customerID << endl;
 
-    cout << "Payment     : "
-        << paymentMethod << endl;
-
+    cout << "Status      : PENDING" << endl;
     displayCart(cart);
 
     int confirmChoice;
@@ -263,8 +211,7 @@ void checkoutOrder(
         saveOrder(
             con,
             customerID,
-            cart,
-            paymentMethod
+            cart
         );
     }
     else
@@ -276,9 +223,9 @@ void checkoutOrder(
 void saveOrder(
     sql::Connection* con,
     string customerID,
-    vector<CartItem>& cart,
-    string paymentMethod
+    vector<CartItem>& cart
 )
+
 {
     if (cart.empty())
     {
@@ -309,14 +256,12 @@ void saveOrder(
             "(OrderID, OrderDate, PaymentMethod, "
             "TotalAmount, OrderStatus, CustomerID) "
             "VALUES "
-            "(?, NOW(), ?, ?, 'COMPLETED', ?)"
+            "(?, NOW(), NULL, ?, 'PENDING', ?)"
         );
 
         pstmt->setString(1, orderID);
-        pstmt->setString(2, paymentMethod);
-        pstmt->setDouble(3, grandTotal);
-        pstmt->setString(4, customerID);
-
+        pstmt->setDouble(2, grandTotal);
+        pstmt->setString(3, customerID);
         pstmt->executeUpdate();
 
         delete pstmt;
@@ -388,18 +333,84 @@ void addProductToCart(
     vector<CartItem>& cart
 )
 {
-    clearScreen();
 
     string productID;
 
     int quantity;
 
 
+    clearScreen();
+
     displayHeader("ADD PRODUCT TO CART");
 
-    cout << "\nEnter Product ID : ";
-    cin >> productID;
+    displayPath(
+        "HOME > ORDER MANAGEMENT > ADD PRODUCT"
+    );
 
+    displaySection(
+        "AVAILABLE PRODUCTS"
+    );
+
+    sql::Statement* stmt;
+    sql::ResultSet* productList;
+
+    stmt = con->createStatement();
+
+    productList = stmt->executeQuery(
+        "SELECT ProductID, ProductName, "
+        "Price, StockQuantity "
+        "FROM PRODUCT "
+        "WHERE Status='ACTIVE' "
+        "AND StockQuantity > 0 "
+        "ORDER BY ProductName"
+    );
+
+    margin();
+    cout << left
+        << setw(12) << "ProductID"
+        << setw(30) << "Product Name"
+        << setw(12) << "Price"
+        << setw(10) << "Stock"
+        << endl;
+
+    margin();
+    cout << "------------------------------------------------------------------"
+        << endl;
+
+    while (productList->next())
+    {
+        margin();
+
+        cout << left
+            << setw(12)
+            << productList->getString("ProductID")
+
+            << setw(30)
+            << productList->getString("ProductName")
+
+            << setw(12)
+            << fixed << setprecision(2)
+            << productList->getDouble("Price")
+
+            << setw(10)
+            << productList->getInt("StockQuantity")
+
+            << endl;
+    }
+
+    margin();
+    cout << "------------------------------------------------------------------"
+        << endl;
+
+    delete productList;
+    delete stmt;
+
+
+    cout << "\n";
+
+    margin();
+    cout << "Enter Product ID : ";
+    cin >> productID;
     try
     {
         sql::PreparedStatement* pstmt;
@@ -410,7 +421,6 @@ void addProductToCart(
             "WHERE ProductID=? "
             "AND Status='ACTIVE'"
         );
-
         pstmt->setString(1, productID);
 
         res = pstmt->executeQuery();
@@ -421,6 +431,10 @@ void addProductToCart(
 
             delete res;
             delete pstmt;
+
+            pauseScreen();
+
+            addProductToCart(con, cart);
 
             return;
         }
@@ -461,7 +475,11 @@ void addProductToCart(
 
         if (quantity > stockQty)
         {
-            cout << "\nInsufficient stock!\n";
+            displayError("Insufficient stock!");
+
+            pauseScreen();
+
+            addProductToCart(con, cart);
 
             return;
         }
@@ -484,6 +502,12 @@ void addProductToCart(
         cart.push_back(item);
 
         displaySuccess("PRODUCT ADDED TO CART");
+        cout << "\n";
+
+        margin();
+        cout << "Items In Cart : "
+            << cart.size()
+            << endl;
     }
     catch (sql::SQLException& e)
     {
@@ -505,26 +529,48 @@ void orderManagementMenu(sql::Connection* con)
         clearScreen();
 
         displayHeader("ORDER MANAGEMENT");
+
+        margin();
         cout << "1. Create Order\n";
+
+        margin();
         cout << "2. View Orders\n";
+
+        margin();
         cout << "3. Search Order\n";
-        cout << "4. Cancel Order\n";
-        cout << "5. Restore Order\n";
-        cout << "6. Back\n";
 
-        cout << "\nEnter Choice : ";
+        margin();
+        cout << "4. Process Payment\n";
 
-        while (!(cin >> choice) || choice < 1 || choice > 6)
+        margin();
+        cout << "5. Cancel Order\n";
+
+        margin();
+        cout << "6. Restore Order\n";
+
+        margin();
+        cout << "7. Back\n";
+
+        cout << "\n";
+
+        margin();
+        cout << "Enter Choice : ";
+
+        while (!(cin >> choice) || choice < 1 || choice > 7)
         {
             cin.clear();
-
             cin.ignore(1000, '\n');
 
+            margin();
             cout << "\nInvalid input!";
 
-            cout << "\nPlease enter a number between 1 - 6.";
+            margin();
+            cout << "\nPlease enter a number between 1 - 7.";
 
-            cout << "\n\nEnter Choice : ";
+            cout << "\n\n";
+
+            margin();
+            cout << "Enter Choice : ";
         }
 
         switch (choice)
@@ -532,9 +578,7 @@ void orderManagementMenu(sql::Connection* con)
         case 1:
 
             clearScreen();
-
             createOrder(con);
-
             pauseScreen();
 
             break;
@@ -542,9 +586,7 @@ void orderManagementMenu(sql::Connection* con)
         case 2:
 
             clearScreen();
-
             viewOrders(con);
-
             pauseScreen();
 
             break;
@@ -552,9 +594,7 @@ void orderManagementMenu(sql::Connection* con)
         case 3:
 
             clearScreen();
-
             searchOrder(con);
-
             pauseScreen();
 
             break;
@@ -562,9 +602,7 @@ void orderManagementMenu(sql::Connection* con)
         case 4:
 
             clearScreen();
-
-            cancelOrder(con);
-
+            processPayment(con);
             pauseScreen();
 
             break;
@@ -572,19 +610,26 @@ void orderManagementMenu(sql::Connection* con)
         case 5:
 
             clearScreen();
-
-            restoreOrder(con);
-
+            cancelOrder(con);
             pauseScreen();
 
             break;
 
         case 6:
 
+            clearScreen();
+            restoreOrder(con);
+            pauseScreen();
+
+            break;
+
+        case 7:
+
             return;
 
         default:
 
+            margin();
             cout << "\nInvalid option!\n";
 
             pauseScreen();
@@ -597,19 +642,71 @@ void orderManagementMenu(sql::Connection* con)
 //=====================================================
 // Create Order
 //=====================================================
-
 void createOrder(sql::Connection* con)
 {
     string customerID;
-
     vector<CartItem> cart;
 
-    cout << "==================================================\n";
-    cout << "                 CREATE ORDER\n";
-    cout << "==================================================\n";
+    
+        clearScreen();
 
-    cout << "\nEnter Customer ID : ";
+    displayHeader("CREATE ORDER");
+
+    displayPath(
+        "HOME > ORDER MANAGEMENT > CREATE ORDER"
+    );
+    displaySection(
+        "CUSTOMER LIST"
+    );
+
+    sql::Statement* stmt;
+    sql::ResultSet* customerList;
+
+    stmt = con->createStatement();
+
+    customerList = stmt->executeQuery(
+        "SELECT CustomerID, CustomerName "
+        "FROM CUSTOMER "
+        "WHERE Status='ACTIVE' "
+        "ORDER BY CustomerName"
+    );
+
+    margin();
+    cout << left
+        << setw(15) << "Customer ID"
+        << setw(35) << "Customer Name"
+        << endl;
+
+    margin();
+    cout << "--------------------------------------------------"
+        << endl;
+
+    while (customerList->next())
+    {
+        margin();
+
+        cout << left
+            << setw(15)
+            << customerList->getString("CustomerID")
+
+            << setw(35)
+            << customerList->getString("CustomerName")
+            << endl;
+    }
+
+    margin();
+    cout << "--------------------------------------------------"
+        << endl;
+
+    delete customerList;
+    delete stmt;
+
+    cout << "\n";
+
+    margin();
+    cout << "Enter Customer ID : ";
     cin >> customerID;
+
 
     try
     {
@@ -618,7 +715,8 @@ void createOrder(sql::Connection* con)
 
         pstmt = con->prepareStatement(
             "SELECT * FROM CUSTOMER "
-            "WHERE CustomerID=?"
+            "WHERE CustomerID=? "
+            "AND Status='ACTIVE'"
         );
 
         pstmt->setString(1, customerID);
@@ -627,7 +725,9 @@ void createOrder(sql::Connection* con)
 
         if (!res->next())
         {
-            cout << "\nCustomer not found!\n";
+            displayError(
+                "Customer not found."
+            );
 
             delete res;
             delete pstmt;
@@ -641,62 +741,120 @@ void createOrder(sql::Connection* con)
         delete res;
         delete pstmt;
 
-        clearScreen();
-
-        displayHeader("ORDER SESSION STARTED");
-
-        cout << " Customer ID   : "
-            << customerID << endl;
-
-        cout << " Customer Name : "
-            << customerName << endl;
-
-        cout << "\n==================================================\n";
-
         int choice;
 
         do
         {
-            cout << "\n1. Add Product To Cart\n";
+            clearScreen();
+
+            displayHeader("ORDER SESSION");
+
+            displayPath(
+                "HOME > ORDER MANAGEMENT > CREATE ORDER"
+            );
+
+            displaySection(
+                "CUSTOMER INFORMATION"
+            );
+
+            margin();
+            cout << left
+                << setw(15) << "Customer ID"
+                << ": "
+                << customerID
+                << endl;
+
+            margin();
+            cout << left
+                << setw(15) << "Customer Name"
+                << ": "
+                << customerName
+                << endl;
+
+            displaySection(
+                "ORDER MENU"
+            );
+
+            margin();
+            cout << "1. Add Product To Cart\n";
+
+            margin();
             cout << "2. View Cart\n";
+
+            margin();
             cout << "3. Checkout\n";
+
+            margin();
             cout << "4. Cancel Order\n";
 
-            cout << "\nEnter Choice : ";
+            cout << "\n";
 
-            while (!(cin >> choice) || choice < 1 || choice > 4)
+            margin();
+            cout << "Enter Choice : ";
+
+            while (!(cin >> choice)
+                || choice < 1
+                || choice > 4)
             {
                 cin.clear();
 
-                cin.ignore(1000, '\n');
+                cin.ignore(
+                    1000,
+                    '\n'
+                );
 
-                cout << "\nInvalid input!";
-                cout << "\nPlease enter a number between 1 - 4.";
+                displayError(
+                    "Invalid choice."
+                );
 
-                cout << "\n\nEnter Choice : ";
+                margin();
+                cout << "Enter Choice : ";
             }
 
             switch (choice)
             {
             case 1:
 
-                addProductToCart(con, cart);
+                addProductToCart(
+                    con,
+                    cart
+                );
+
                 break;
 
             case 2:
 
+                clearScreen();
+
+                displayHeader(
+                    "VIEW CART"
+                );
+
+                displayPath(
+                    "HOME > ORDER MANAGEMENT > VIEW CART"
+                );
+
                 displayCart(cart);
+
+                pauseScreen();
 
                 break;
 
             case 3:
 
-                checkoutOrder(con, customerID, cart);
+                checkoutOrder(
+                    con,
+                    customerID,
+                    cart
+                );
+
                 return;
 
             case 4:
 
-                cout << "\nOrder session cancelled.\n";
+                displayWarning(
+                    "Order session cancelled."
+                );
 
                 return;
             }
@@ -705,11 +863,14 @@ void createOrder(sql::Connection* con)
     }
     catch (sql::SQLException& e)
     {
-        cout << "\nDatabase Error : "
-            << e.what()
-            << endl;
+        displayError(
+            e.what()
+        );
     }
+    
+
 }
+
 
 //=====================================================
 // View Orders
@@ -719,7 +880,10 @@ void viewOrders(sql::Connection* con)
 {
     clearScreen();
 
-    displayHeader("ORDER LIST");
+    displayHeader("COMPLETED ORDERS");
+    displayPath(
+        "HOME > ORDER MANAGEMENT > View Orders"
+    );
 
     try
     {
@@ -730,8 +894,9 @@ void viewOrders(sql::Connection* con)
 
         res = stmt->executeQuery(
             "SELECT * FROM ORDERS "
+            "WHERE OrderStatus='COMPLETED' "
             "ORDER BY OrderDate DESC"
-        );
+         );
 
         cout << left
             << setw(12) << "OrderID"
@@ -772,10 +937,11 @@ void viewOrders(sql::Connection* con)
 
         cout << "--------------------------------------------------------------------------\n";
 
-        cout << "\nTotal Orders : "
+        margin();
+
+        cout << "\nTotal Completed Orders : "
             << totalOrders
             << endl;
-
         delete res;
         delete stmt;
     }
@@ -786,6 +952,198 @@ void viewOrders(sql::Connection* con)
 }
 
 
+void processPayment(sql::Connection* con)
+{
+    clearScreen();
+
+    displayHeader("PROCESS PAYMENT");
+
+    displayPath(
+        "HOME > ORDER MANAGEMENT > PROCESS PAYMENT"
+    );
+
+    try
+    {
+        sql::PreparedStatement* pstmt;
+        sql::ResultSet* res;
+
+        pstmt = con->prepareStatement(
+            "SELECT * FROM ORDERS "
+            "WHERE OrderStatus='PENDING' "
+            "ORDER BY OrderDate DESC"
+        );
+
+        res = pstmt->executeQuery();
+
+        cout << "\n";
+
+        margin();
+        cout << left
+            << setw(12) << "OrderID"
+            << setw(15) << "Customer"
+            << setw(15) << "Total"
+            << endl;
+
+        margin();
+        cout << "--------------------------------------------------\n";
+
+        int totalPending = 0;
+
+        while (res->next())
+        {
+            margin();
+
+            cout << left
+                << setw(12) << res->getString("OrderID")
+                << setw(15) << res->getString("CustomerID")
+                << fixed << setprecision(2)
+                << res->getDouble("TotalAmount")
+                << endl;
+
+            totalPending++;
+        }
+
+        margin();
+        cout << "--------------------------------------------------\n";
+
+        if (totalPending == 0)
+        {
+            margin();
+            cout << "Operation cancelled.\n";
+            delete res;
+            delete pstmt;
+
+            return;
+        }
+
+        string orderID;
+
+        cout << "\n";
+
+        margin();
+        cout << "Enter Order ID : ";
+        cin >> orderID;
+
+        delete res;
+        delete pstmt;
+
+        pstmt = con->prepareStatement(
+            "SELECT * FROM ORDERS "
+            "WHERE OrderID=? "
+            "AND OrderStatus='PENDING'"
+        );
+
+        pstmt->setString(1, orderID);
+
+        res = pstmt->executeQuery();
+
+        if (!res->next())
+        {
+            displayError("Pending order not found.");
+
+            delete res;
+            delete pstmt;
+
+            return;
+        }
+
+        delete res;
+        delete pstmt;
+
+        int paymentChoice;
+        string paymentMethod;
+
+        cout << "\n";
+
+        margin();
+        cout << "1. Cash\n";
+
+        margin();
+        cout << "2. Credit Card\n";
+
+        margin();
+        cout << "3. Online Banking\n";
+
+        margin();
+        cout << "4. E-Wallet\n";
+
+        cout << "\n";
+
+        margin();
+        cout << "Enter Payment Method : ";
+
+        while (!(cin >> paymentChoice)
+            || paymentChoice < 1
+            || paymentChoice > 4)
+        {
+            cin.clear();
+            cin.ignore(1000, '\n');
+
+            margin();
+            cout << "Invalid choice!\n";
+
+            margin();
+            cout << "Enter Payment Method : ";
+        }
+
+        switch (paymentChoice)
+        {
+        case 1:
+            paymentMethod = "Cash";
+            break;
+
+        case 2:
+            paymentMethod = "Credit Card";
+            break;
+
+        case 3:
+            paymentMethod = "Online Banking";
+            break;
+
+        case 4:
+            paymentMethod = "E-Wallet";
+            break;
+        }
+
+        char confirm;
+
+        cout << "\n";
+
+        margin();
+        cout << "Confirm Payment? (Y/N): ";
+        cin >> confirm;
+
+        if (toupper(confirm) != 'Y')
+        {
+            margin();
+            cout << "Operation cancelled.\n";
+            return;
+        }
+
+        pstmt = con->prepareStatement(
+            "UPDATE ORDERS "
+            "SET PaymentMethod=?, "
+            "OrderStatus='COMPLETED' "
+            "WHERE OrderID=?"
+        );
+
+        pstmt->setString(1, paymentMethod);
+        pstmt->setString(2, orderID);
+
+        pstmt->executeUpdate();
+
+        delete pstmt;
+
+        displaySuccess(
+            "PAYMENT PROCESSED SUCCESSFULLY"
+        );
+    }
+    catch (sql::SQLException& e)
+    {
+        displayError(e.what());
+    }
+}
+
 //=====================================================
 // Search Order
 //=====================================================
@@ -795,6 +1153,9 @@ void searchOrder(sql::Connection* con)
     clearScreen();
 
     displayHeader("SEARCH ORDER");
+    displayPath(
+        "HOME > ORDER MANAGEMENT > SEARCH ORDER"
+    );
 
     string orderID;
 
@@ -943,10 +1304,59 @@ void cancelOrder(sql::Connection* con)
     clearScreen();
 
     displayHeader("CANCEL ORDER");
+    displayPath(
+        "HOME > ORDER MANAGEMENT > CANCEL ORDER"
+    );
+
+    sql::PreparedStatement* pstmt;
+    sql::ResultSet* res;
+
+    pstmt = con->prepareStatement(
+        "SELECT * "
+        "FROM ORDERS "
+        "WHERE OrderStatus='COMPLETED' "
+        "ORDER BY OrderDate DESC"
+    );
+
+    res = pstmt->executeQuery();
+
+    cout << "\n";
+
+    margin();
+    cout << left
+        << setw(12) << "OrderID"
+        << setw(15) << "Customer"
+        << setw(15) << "Total"
+        << endl;
+
+    margin();
+    cout << "--------------------------------------------------\n";
+
+    while (res->next())
+    {
+        margin();
+
+        cout << left
+            << setw(12) << res->getString("OrderID")
+            << setw(15) << res->getString("CustomerID")
+            << fixed << setprecision(2)
+            << res->getDouble("TotalAmount")
+            << endl;
+    }
+
+    margin();
+    cout << "--------------------------------------------------\n";
+
+    delete res;
+    delete pstmt;
 
     string orderID;
 
-    cout << "\nEnter Order ID : ";
+    cout << "\n";
+
+    margin();
+    cout << "Enter Order ID : ";
+
     cin >> orderID;
 
     try
@@ -958,9 +1368,9 @@ void cancelOrder(sql::Connection* con)
         pstmt = con->prepareStatement(
             "SELECT * "
             "FROM ORDERS "
-            "WHERE OrderID = ?"
+            "WHERE OrderStatus='COMPLETED' "
+            "AND OrderID = ?"
         );
-
         pstmt->setString(1, orderID);
 
         res = pstmt->executeQuery();
@@ -1105,13 +1515,79 @@ void cancelOrder(sql::Connection* con)
 void restoreOrder(sql::Connection* con)
 {
     clearScreen();
+    string orderID;
 
     displayHeader("RESTORE ORDER");
 
-    string orderID;
+    displayPath(
+        "HOME > ORDER MANAGEMENT > RESTORE ORDER"
+    );
 
-    cout << "\nEnter Order ID : ";
+    displaySection("CANCELLED ORDERS");
+    sql::PreparedStatement* pstmt;
+    sql::ResultSet* res;
+
+    pstmt = con->prepareStatement(
+        "SELECT OrderID, CustomerID, TotalAmount "
+        "FROM ORDERS "
+        "WHERE OrderStatus='CANCELLED' "
+        "ORDER BY OrderDate DESC"
+    );
+
+    res = pstmt->executeQuery();
+
+    margin();
+    cout << left
+        << setw(12) << "OrderID"
+        << setw(15) << "Customer"
+        << setw(15) << "Total"
+        << endl;
+
+    margin();
+    cout << "--------------------------------------------------"
+        << endl;
+
+    int totalOrders = 0;
+
+    while (res->next())
+    {
+        margin();
+
+        cout << left
+            << setw(12) << res->getString("OrderID")
+            << setw(15) << res->getString("CustomerID")
+            << fixed << setprecision(2)
+            << res->getDouble("TotalAmount")
+            << endl;
+
+        totalOrders++;
+    }
+
+    margin();
+    cout << "--------------------------------------------------"
+        << endl;
+
+    if (totalOrders == 0)
+    {
+        displayInfo(
+            "No cancelled orders found."
+        );
+
+        delete res;
+        delete pstmt;
+
+        return;
+    }
+
+    delete res;
+    delete pstmt;
+
+    cout << "\n";
+
+    margin();
+    cout << "Enter Order ID : ";
     cin >> orderID;
+
 
     try
     {
@@ -1122,7 +1598,8 @@ void restoreOrder(sql::Connection* con)
         pstmt = con->prepareStatement(
             "SELECT * "
             "FROM ORDERS "
-            "WHERE OrderID = ?"
+            "WHERE OrderID=? "
+            "AND OrderStatus='CANCELLED'"
         );
 
         pstmt->setString(1, orderID);
@@ -1131,6 +1608,7 @@ void restoreOrder(sql::Connection* con)
 
         if (!res->next())
         {
+
             displayError("Order not found!");
 
             delete res;
@@ -1138,6 +1616,14 @@ void restoreOrder(sql::Connection* con)
 
             return;
         }
+
+        clearScreen();
+
+        displayHeader("RESTORE ORDER");
+
+        displayPath(
+            "HOME > ORDER MANAGEMENT > RESTORE ORDER"
+        );
 
         string status =
             res->getString("OrderStatus");
@@ -1152,23 +1638,36 @@ void restoreOrder(sql::Connection* con)
             return;
         }
 
-        cout << "\nOrder ID    : "
+        displaySection("ORDER DETAILS");
+
+        margin();
+        cout << left
+            << setw(15) << "Order ID"
+            << ": "
             << res->getString("OrderID")
             << endl;
 
-        cout << "Customer ID : "
+        margin();
+        cout << left
+            << setw(15) << "Customer ID"
+            << ": "
             << res->getString("CustomerID")
             << endl;
 
-        cout << "Status      : "
+        margin();
+        cout << left
+            << setw(15) << "Status"
+            << ": "
             << res->getString("OrderStatus")
             << endl;
 
-        cout << "Total       : RM "
+        margin();
+        cout << left
+            << setw(15) << "Total"
+            << ": RM "
             << fixed << setprecision(2)
             << res->getDouble("TotalAmount")
             << endl;
-
         delete res;
         delete pstmt;
 
@@ -1213,8 +1712,9 @@ void restoreOrder(sql::Connection* con)
         delete pstmt;
 
         int choice;
-
+        margin();
         cout << "\n1. Confirm Restore\n";
+        margin();
         cout << "2. Back\n";
 
         cout << "\nEnter Choice : ";
