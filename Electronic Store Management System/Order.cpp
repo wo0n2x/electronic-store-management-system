@@ -1,4 +1,5 @@
 #include "Order.h"
+#include "Customer.h"
 #include "Utility.h"
 #include <sstream>
 #include <iostream>
@@ -686,51 +687,7 @@ void createOrder(sql::Connection* con)
     displayPath(
         "HOME > ORDER MANAGEMENT > CREATE ORDER"
     );
-    displaySection(
-        "CUSTOMER LIST"
-    );
-
-    sql::Statement* stmt;
-    sql::ResultSet* customerList;
-
-    stmt = con->createStatement();
-
-    customerList = stmt->executeQuery(
-        "SELECT CustomerID, CustomerName "
-        "FROM CUSTOMER "
-        "WHERE Status='ACTIVE' "
-        "ORDER BY CustomerName"
-    );
-
-    margin();
-    cout << left
-        << setw(15) << "Customer ID"
-        << setw(35) << "Customer Name"
-        << endl;
-
-    margin();
-    cout << "--------------------------------------------------"
-        << endl;
-
-    while (customerList->next())
-    {
-        margin();
-
-        cout << left
-            << setw(15)
-            << customerList->getString("CustomerID")
-
-            << setw(35)
-            << customerList->getString("CustomerName")
-            << endl;
-    }
-
-    margin();
-    cout << "--------------------------------------------------"
-        << endl;
-
-    delete customerList;
-    delete stmt;
+    displayCustomerList(con);
 
     cout << "\n";
 

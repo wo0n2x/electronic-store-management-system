@@ -108,6 +108,67 @@ namespace
         cout << prompt;
     }
 
+    string trimInput(string value)
+    {
+        size_t first =
+            value.find_first_not_of(" \t\n\r\f\v");
+
+        if (first == string::npos)
+        {
+            return "";
+        }
+
+        size_t last =
+            value.find_last_not_of(" \t\n\r\f\v");
+
+        return value.substr(first, last - first + 1);
+    }
+
+    bool containsAlphanumeric(string value)
+    {
+        for (char character : value)
+        {
+            if (isalnum(static_cast<unsigned char>(character)))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    bool isValidProductName(string value)
+    {
+        value = trimInput(value);
+
+        return !value.empty() &&
+            containsAlphanumeric(value);
+    }
+
+    bool parseNonNegativeInt(string input, int& value)
+    {
+        input = trimInput(input);
+
+        if (input.empty())
+        {
+            return false;
+        }
+
+        for (char character : input)
+        {
+            if (!isdigit(static_cast<unsigned char>(character)))
+            {
+                return false;
+            }
+        }
+
+        istringstream stream(input);
+        char extra;
+
+        return (stream >> value) &&
+            !(stream >> extra);
+    }
+
 
 
     bool confirmAction(string prompt)
@@ -161,6 +222,24 @@ namespace
         }
     }
 
+    void readProductName(string prompt, string& value)
+    {
+        printPrompt(prompt);
+        getline(cin, value);
+        value = trimInput(value);
+
+        while (!isValidProductName(value))
+        {
+            displayError(
+                "Product name must contain at least one letter or number."
+            );
+
+            printPrompt(prompt);
+            getline(cin, value);
+            value = trimInput(value);
+        }
+    }
+
     bool readPositiveDouble(string prompt, double& value)
     {
         printPrompt(prompt);
@@ -181,18 +260,17 @@ namespace
 
     bool readNonNegativeInt(string prompt, int& value)
     {
+        string input;
+
         printPrompt(prompt);
+        getline(cin, input);
 
-        while (!(cin >> value) || value < 0)
+        while (!parseNonNegativeInt(input, value))
         {
-            cin.clear();
-            discardLine();
-
             displayError("Please enter a whole number of 0 or higher.");
             printPrompt(prompt);
+            getline(cin, input);
         }
-
-        discardLine();
 
         return true;
     }
@@ -361,12 +439,41 @@ namespace
                 return currentValue;
             }
 
-            if (parseInt(input, value) && value >= 0)
+            if (parseNonNegativeInt(input, value))
             {
                 return value;
             }
 
             displayError("Please enter a whole number of 0 or higher.");
+        }
+    }
+
+    string readOptionalProductName(
+        string prompt,
+        string currentValue
+    )
+    {
+        string input;
+
+        while (true)
+        {
+            printPrompt(prompt);
+            getline(cin, input);
+            input = trimInput(input);
+
+            if (input.empty())
+            {
+                return currentValue;
+            }
+
+            if (isValidProductName(input))
+            {
+                return input;
+            }
+
+            displayError(
+                "Product name must contain at least one letter or number."
+            );
         }
     }
 
@@ -1121,7 +1228,7 @@ void addProduct(sql::Connection* con)
     displayHeader("ADD PRODUCT");
     displayPath("HOME > PRODUCT MANAGEMENT > ADD PRODUCT");
 
-    readRequiredText("Product Name      : ", productName);
+    readProductName("Product Name      : ", productName);
     readRequiredText("Brand             : ", brand);
     readPositiveDouble("Price             : ", price);
     readNonNegativeInt("Stock Quantity    : ", stockQty);
@@ -1265,7 +1372,7 @@ void updateProduct(sql::Connection* con)
             case 1:
 
                 product.productName =
-                    readOptionalText(
+                    readOptionalProductName(
                         "New Product Name (Enter to keep current): ",
                         product.productName
                     );

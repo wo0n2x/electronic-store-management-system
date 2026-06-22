@@ -8,6 +8,7 @@
 #include <regex>
 #include <cctype>
 #include <iomanip>
+#include <memory>
 
 using namespace std;
 
@@ -22,6 +23,163 @@ namespace
     void printCustomerLine(int width)
     {
         printTableLine(width);
+    }
+
+    void printCustomerStatusField(string status, int width)
+    {
+        int padding =
+            width - static_cast<int>(status.length());
+
+        if (padding < 0)
+        {
+            padding = 0;
+        }
+
+        printStatus(status);
+        cout << string(padding, ' ');
+    }
+
+    string trimInput(string value)
+    {
+        size_t first =
+            value.find_first_not_of(" \t\n\r\f\v");
+
+        if (first == string::npos)
+        {
+            return "";
+        }
+
+        size_t last =
+            value.find_last_not_of(" \t\n\r\f\v");
+
+        return value.substr(first, last - first + 1);
+    }
+
+    bool customerValueExists(
+        sql::Connection* con,
+        string columnName,
+        string value,
+        string excludedCustomerID = ""
+    )
+    {
+        string query =
+            "SELECT CustomerID "
+            "FROM CUSTOMER "
+            "WHERE " + columnName + "=? ";
+
+        if (!excludedCustomerID.empty())
+        {
+            query += "AND CustomerID<>? ";
+        }
+
+        query += "LIMIT 1";
+
+        unique_ptr<sql::PreparedStatement> pstmt(
+            con->prepareStatement(query)
+        );
+
+        pstmt->setString(1, value);
+
+        if (!excludedCustomerID.empty())
+        {
+            pstmt->setString(2, excludedCustomerID);
+        }
+
+        unique_ptr<sql::ResultSet> res(
+            pstmt->executeQuery()
+        );
+
+        return res->next();
+    }
+
+    bool customerEmailExists(sql::Connection* con, string email)
+    {
+        return customerValueExists(con, "Email", email);
+    }
+
+    bool customerContactExists(
+        sql::Connection* con,
+        string contact,
+        string excludedCustomerID = ""
+    )
+    {
+        return customerValueExists(
+            con,
+            "ContactNo",
+            contact,
+            excludedCustomerID
+        );
+    }
+
+    bool isValidCustomerID(string customerID)
+    {
+        regex pattern("^C[0-9]{3}$");
+
+        return regex_match(customerID, pattern);
+    }
+
+    void displayInactiveCustomerList(sql::Connection* con)
+    {
+        sql::Statement* stmt = nullptr;
+        sql::ResultSet* res = nullptr;
+
+        try
+        {
+            stmt = con->createStatement();
+
+            res = stmt->executeQuery(
+                "SELECT CustomerID, CustomerName, Status "
+                "FROM CUSTOMER "
+                "WHERE Status='INACTIVE' "
+                "ORDER BY CustomerID"
+            );
+
+            cout << "\n";
+            displaySection("INACTIVE CUSTOMERS");
+
+            margin();
+            setTableHeaderColor();
+            cout << left
+                << setw(15) << "Customer ID"
+                << setw(30) << "Customer Name"
+                << setw(15) << "Status"
+                << endl;
+            resetTextColor();
+
+            printCustomerLine(60);
+
+            int count = 0;
+
+            while (res->next())
+            {
+                margin();
+
+                cout << left
+                    << setw(15) << res->getString("CustomerID")
+                    << setw(30) << res->getString("CustomerName");
+                printCustomerStatusField(res->getString("Status"), 15);
+                cout << endl;
+
+                count++;
+            }
+
+            printCustomerLine(60);
+
+            if (count == 0)
+            {
+                displayInfo("No inactive customers available to restore.");
+            }
+
+            delete res;
+            delete stmt;
+        }
+        catch (sql::SQLException& e)
+        {
+            delete res;
+            delete stmt;
+
+            displayError(e.what());
+        }
     }
 }
 
@@ -68,8 +226,11 @@ string generateCustomerID(sql::Connection* con)
 
 bool isValidName(string name)
 {
+    name = trimInput(name);
+
     regex pattern("^[A-Za-z ]+$");
-    return regex_match(name, pattern);
+    return !name.empty() &&
+        regex_match(name, pattern);
 }
 
 bool isValidEmail(string email)
@@ -102,7 +263,7 @@ void displayCustomerList(sql::Connection* con)
         stmt = con->createStatement();
 
         res = stmt->executeQuery(
-            "SELECT CustomerID, CustomerName "
+            "SELECT CustomerID, CustomerName, Status "
             "FROM CUSTOMER "
             "WHERE Status='ACTIVE' "
             "ORDER BY CustomerID"
@@ -110,29 +271,31 @@ void displayCustomerList(sql::Connection* con)
 
         cout << "\n";
 
-        printCustomerLine(52);
+        displaySection("ACTIVE CUSTOMERS");
 
         margin();
         setTableHeaderColor();
         cout << left
-            << setw(12) << "ID"
+            << setw(15) << "Customer ID"
             << setw(30) << "Customer Name"
+            << setw(15) << "Status"
             << endl;
         resetTextColor();
 
-        printCustomerLine(52);
+        printCustomerLine(60);
 
         while (res->next())
         {
             margin();
 
             cout << left
-                << setw(10) << res->getString("CustomerID")
-                << setw(25) << res->getString("CustomerName")
-                << endl;
+                << setw(15) << res->getString("CustomerID")
+                << setw(30) << res->getString("CustomerName");
+            printCustomerStatusField(res->getString("Status"), 15);
+            cout << endl;
         }
 
-        printCustomerLine(52);
+        printCustomerLine(60);
 
         delete res;
         delete stmt;
@@ -162,48 +325,74 @@ void addCustomer(sql::Connection* con)
     displayPath("HOME > CUSTOMER MANAGEMENT > ADD CUSTOMER");
     displaySection("CUSTOMER DETAILS");
 
-    // Customer Name
-    printCustomerPrompt("Enter Customer Name: ");
-    getline(cin, name);
-
-    while (!isValidName(name))
-    {
-        displayError("Name must contain letters only.");
-
-        printCustomerPrompt("Enter Customer Name: ");
-        getline(cin, name);
-    }
-
-    // Email
-    printCustomerPrompt("Enter Email: ");
-    getline(cin, email);
-
-    while (!isValidEmail(email))
-    {
-        displayError("Invalid email format.");
-
-        printCustomerPrompt("Enter Email: ");
-        getline(cin, email);
-    }
-
-    // Contact Number
-    printCustomerPrompt("Enter Contact Number: ");
-    getline(cin, contact);
-
-    while (!isValidContact(contact))
-    {
-        displayError("Contact number must contain numbers only.");
-
-        printCustomerPrompt("Enter Contact Number: ");
-        getline(cin, contact);
-    }
-
-    // Address
-    printCustomerPrompt("Enter Address: ");
-    getline(cin, address);
-
     try
     {
+        // Customer Name
+        printCustomerPrompt("Enter Customer Name: ");
+        getline(cin, name);
+        name = trimInput(name);
+
+        while (!isValidName(name))
+        {
+            displayError("Name must contain letters only.");
+
+            printCustomerPrompt("Enter Customer Name: ");
+            getline(cin, name);
+            name = trimInput(name);
+        }
+
+        // Email
+        printCustomerPrompt("Enter Email: ");
+        getline(cin, email);
+        email = trimInput(email);
+
+        while (!isValidEmail(email) ||
+            customerEmailExists(con, email))
+        {
+            if (!isValidEmail(email))
+            {
+                displayError("Invalid email format.");
+            }
+            else
+            {
+                displayError(
+                    "Email already exists. Please enter a different email."
+                );
+            }
+
+            printCustomerPrompt("Enter Email: ");
+            getline(cin, email);
+            email = trimInput(email);
+        }
+
+        // Contact Number
+        printCustomerPrompt("Enter Contact Number: ");
+        getline(cin, contact);
+        contact = trimInput(contact);
+
+        while (!isValidContact(contact) ||
+            customerContactExists(con, contact))
+        {
+            if (!isValidContact(contact))
+            {
+                displayError("Contact number must contain numbers only.");
+            }
+            else
+            {
+                displayError(
+                    "Contact number already exists. Please enter a different contact number."
+                );
+            }
+
+            printCustomerPrompt("Enter Contact Number: ");
+            getline(cin, contact);
+            contact = trimInput(contact);
+        }
+
+        // Address
+        printCustomerPrompt("Enter Address: ");
+        getline(cin, address);
+
         sql::PreparedStatement* pstmt;
 
         pstmt = con->prepareStatement(
@@ -401,6 +590,7 @@ void updateCustomer(sql::Connection* con)
 
         printCustomerPrompt("New Contact (Press Enter to keep current): ");
         getline(cin, contact);
+        contact = trimInput(contact);
 
         if (contact.empty())
         {
@@ -408,12 +598,23 @@ void updateCustomer(sql::Connection* con)
         }
         else
         {
-            while (!isValidContact(contact))
+            while (!isValidContact(contact) ||
+                customerContactExists(con, contact, customerID))
             {
-                displayError("Contact number must contain numbers only.");
+                if (!isValidContact(contact))
+                {
+                    displayError("Contact number must contain numbers only.");
+                }
+                else
+                {
+                    displayError(
+                        "Contact number already exists. Please enter a different contact number."
+                    );
+                }
 
                 printCustomerPrompt("New Contact: ");
                 getline(cin, contact);
+                contact = trimInput(contact);
             }
         }
 
@@ -530,103 +731,160 @@ void deleteCustomer(sql::Connection* con)
 // =====================================
 void restoreCustomer(sql::Connection* con)
 {
-    clearScreen();
-    displayHeader("RESTORE CUSTOMER");
-    displayPath("HOME > CUSTOMER MANAGEMENT > RESTORE CUSTOMER");
     string customerID;
     char confirm;
 
-    cout << "\n";
-    printCustomerPrompt("Enter Customer ID: ");
-    cin >> customerID;
-
-    try
+    while (true)
     {
-        sql::PreparedStatement* pstmt;
-        sql::ResultSet* res;
+        clearScreen();
+        displayHeader("RESTORE CUSTOMER");
+        displayPath("HOME > CUSTOMER MANAGEMENT > RESTORE CUSTOMER");
 
-        pstmt = con->prepareStatement(
-            "SELECT * FROM CUSTOMER "
-            "WHERE CustomerID=? "
-            "AND Status='INACTIVE'"
-        );
+        displayInactiveCustomerList(con);
 
-        pstmt->setString(1, customerID);
+        cout << "\n";
+        printCustomerPrompt("Enter Customer ID (0 to cancel): ");
+        cin >> customerID;
+        customerID = trimInput(customerID);
 
-        res = pstmt->executeQuery();
-
-        if (!res->next())
+        if (customerID == "0")
         {
-            displayError("Inactive customer not found.");
+            displayInfo("Restore cancelled.");
+            return;
+        }
+
+        if (!isValidCustomerID(customerID))
+        {
+            displayError("Invalid Customer ID format. Please use CXXX.");
+            pauseScreen();
+            continue;
+        }
+
+        try
+        {
+            sql::PreparedStatement* pstmt;
+            sql::ResultSet* res;
+
+            pstmt = con->prepareStatement(
+                "SELECT * FROM CUSTOMER "
+                "WHERE CustomerID=?"
+            );
+
+            pstmt->setString(1, customerID);
+
+            res = pstmt->executeQuery();
+
+            if (!res->next())
+            {
+                displayError("Customer ID not found.");
+
+                delete res;
+                delete pstmt;
+
+                pauseScreen();
+                continue;
+            }
+
+            string status =
+                res->getString("Status");
+
+            if (status == "ACTIVE")
+            {
+                displayError("Customer is already active.");
+
+                delete res;
+                delete pstmt;
+
+                pauseScreen();
+                continue;
+            }
+
+            if (status != "INACTIVE")
+            {
+                displayError("Only inactive customers can be restored.");
+
+                delete res;
+                delete pstmt;
+
+                pauseScreen();
+                continue;
+            }
+
+            displaySection("CUSTOMER DETAILS");
+
+            margin();
+            cout << left << setw(14) << "Customer ID" << ": "
+                << res->getString("CustomerID")
+                << endl;
+
+            margin();
+            cout << left << setw(14) << "Name" << ": "
+                << res->getString("CustomerName")
+                << endl;
+
+            margin();
+            cout << left << setw(14) << "Email" << ": "
+                << res->getString("Email")
+                << endl;
+
+            margin();
+            cout << left << setw(14) << "Contact No" << ": "
+                << res->getString("ContactNo")
+                << endl;
+
+            margin();
+            cout << left << setw(14) << "Address" << ": "
+                << res->getString("Address")
+                << endl;
+
+            margin();
+            cout << left << setw(14) << "Status" << ": ";
+            printStatus(status);
+            cout << endl;
 
             delete res;
             delete pstmt;
 
+            cout << "\n";
+            printCustomerPrompt("Restore this customer? (Y/N): ");
+            cin >> confirm;
+
+            while (toupper(confirm) != 'Y' &&
+                toupper(confirm) != 'N')
+            {
+                displayError("Please enter Y or N.");
+                printCustomerPrompt("Restore this customer? (Y/N): ");
+                cin >> confirm;
+            }
+
+            if (toupper(confirm) == 'N')
+            {
+                displayInfo("Restore cancelled.");
+
+                return;
+            }
+
+            pstmt = con->prepareStatement(
+                "UPDATE CUSTOMER "
+                "SET Status='ACTIVE' "
+                "WHERE CustomerID=?"
+            );
+
+            pstmt->setString(1, customerID);
+
+            pstmt->executeUpdate();
+
+            displaySuccess("Customer restored successfully.");
+
+            delete pstmt;
+
             return;
         }
-
-        displaySection("CUSTOMER DETAILS");
-
-        margin();
-        cout << left << setw(14) << "Customer ID" << ": "
-            << res->getString("CustomerID")
-            << endl;
-
-        margin();
-        cout << left << setw(14) << "Name" << ": "
-            << res->getString("CustomerName")
-            << endl;
-
-        margin();
-        cout << left << setw(14) << "Email" << ": "
-            << res->getString("Email")
-            << endl;
-
-        margin();
-        cout << left << setw(14) << "Contact No" << ": "
-            << res->getString("ContactNo")
-            << endl;
-
-        margin();
-        cout << left << setw(14) << "Address" << ": "
-            << res->getString("Address")
-            << endl;
-
-        margin();
-        cout << left << setw(14) << "Status" << ": ";
-        printStatus(res->getString("Status"));
-        cout << endl;
-        delete res;
-        delete pstmt;
-
-        cout << "\n";
-        printCustomerPrompt("Restore this customer? (Y/N): ");
-        cin >> confirm;
-
-        if (toupper(confirm) != 'Y')
+        catch (sql::SQLException& e)
         {
-            displayInfo("Restore cancelled.");
-
-            return;
+            displayError(e.what());
+            pauseScreen();
         }
-
-        pstmt = con->prepareStatement(
-            "UPDATE CUSTOMER "
-            "SET Status='ACTIVE' "
-            "WHERE CustomerID=?"
-        );
-
-        pstmt->setString(1, customerID);
-
-        pstmt->executeUpdate();
-
-        displaySuccess("Customer restored successfully.");
-
-        delete pstmt;
-    }
-    catch (sql::SQLException& e)
-    {
-        displayError(e.what());
     }
 }
 
