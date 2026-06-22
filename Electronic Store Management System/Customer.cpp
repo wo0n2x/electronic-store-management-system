@@ -118,6 +118,60 @@ namespace
         return regex_match(customerID, pattern);
     }
 
+    bool readCustomerChoice(int& choice)
+    {
+        string input;
+
+        cin >> input;
+
+        if (input.empty())
+        {
+            return false;
+        }
+
+        choice = 0;
+
+        for (char character : input)
+        {
+            if (!isdigit(static_cast<unsigned char>(character)))
+            {
+                return false;
+            }
+
+            choice =
+                choice * 10 +
+                (character - '0');
+        }
+
+        return true;
+    }
+
+    char readCustomerConfirmation(string prompt)
+    {
+        string input;
+
+        while (true)
+        {
+            printCustomerPrompt(prompt + " (Y/N): ");
+            cin >> input;
+
+            if (input.length() == 1)
+            {
+                char confirm =
+                    static_cast<char>(
+                        toupper(static_cast<unsigned char>(input[0]))
+                    );
+
+                if (confirm == 'Y' || confirm == 'N')
+                {
+                    return confirm;
+                }
+            }
+
+            displayError("Please enter Y or N.");
+        }
+    }
+
     void displayInactiveCustomerList(sql::Connection* con)
     {
         sql::Statement* stmt = nullptr;
@@ -710,10 +764,10 @@ void deleteCustomer(sql::Connection* con)
 
         displayWarning("This customer will become inactive.");
         cout << "\n";
-        printCustomerPrompt("Deactivate this customer? (Y/N): ");
-        cin >> confirm;
+        confirm =
+            readCustomerConfirmation("Deactivate this customer?");
 
-        if (toupper(confirm) != 'Y')
+        if (confirm != 'Y')
         {
             displayInfo("Delete cancelled.");
             return;
@@ -858,18 +912,10 @@ void restoreCustomer(sql::Connection* con)
             delete pstmt;
 
             cout << "\n";
-            printCustomerPrompt("Restore this customer? (Y/N): ");
-            cin >> confirm;
+            confirm =
+                readCustomerConfirmation("Restore this customer?");
 
-            while (toupper(confirm) != 'Y' &&
-                toupper(confirm) != 'N')
-            {
-                displayError("Please enter Y or N.");
-                printCustomerPrompt("Restore this customer? (Y/N): ");
-                cin >> confirm;
-            }
-
-            if (toupper(confirm) == 'N')
+            if (confirm == 'N')
             {
                 displayInfo("Restore cancelled.");
 
@@ -934,14 +980,13 @@ void customerManagementMenu(sql::Connection* con)
 
         margin();
         cout << "Enter Choice : ";
-        cin >> choice;
-
-        if (cin.fail())
+        if (!readCustomerChoice(choice) ||
+            choice < 1 ||
+            choice > 6)
         {
-            cin.clear();
-            cin.ignore(1000, '\n');
-
-            displayError("Invalid choice.");
+            displayError(
+                "Invalid choice. Please enter a number between 1 and 6."
+            );
 
             pauseScreen();
 

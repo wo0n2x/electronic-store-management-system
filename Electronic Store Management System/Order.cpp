@@ -8,6 +8,7 @@
 #include <iomanip>
 #include <cctype>
 #include <ctime>
+#include <limits>
 
 #include <cppconn/prepared_statement.h>
 #include <cppconn/resultset.h>
@@ -35,6 +36,89 @@ namespace
 
         printStatus(status);
         cout << string(padding, ' ');
+    }
+
+    bool parseInt(string input, int& value)
+    {
+        istringstream stream(input);
+        char extra;
+
+        return (stream >> value) &&
+            !(stream >> extra);
+    }
+
+    void readOrderChoice(
+        string prompt,
+        int& choice,
+        int minValue,
+        int maxValue
+    )
+    {
+        string input;
+
+        margin();
+        cout << prompt;
+        cin >> input;
+
+        while (!parseInt(input, choice) ||
+            choice < minValue ||
+            choice > maxValue)
+        {
+            displayError(
+                "Invalid choice. Please enter a number between " +
+                to_string(minValue) +
+                " and " +
+                to_string(maxValue) +
+                "."
+            );
+
+            margin();
+            cout << prompt;
+            cin >> input;
+        }
+    }
+
+    void readPositiveQuantity(int& quantity)
+    {
+        string input;
+
+        cout << "\nEnter Quantity : ";
+        cin >> input;
+
+        while (!parseInt(input, quantity) ||
+            quantity <= 0)
+        {
+            displayError("Invalid quantity. Please enter a whole number greater than 0.");
+            cout << "\nEnter Quantity : ";
+            cin >> input;
+        }
+    }
+
+    char readOrderConfirmation(string prompt)
+    {
+        string input;
+
+        while (true)
+        {
+            margin();
+            cout << prompt << " (Y/N): ";
+            cin >> input;
+
+            if (input.length() == 1)
+            {
+                char confirm =
+                    static_cast<char>(
+                        toupper(static_cast<unsigned char>(input[0]))
+                    );
+
+                if (confirm == 'Y' || confirm == 'N')
+                {
+                    return confirm;
+                }
+            }
+
+            displayError("Please enter Y or N.");
+        }
     }
 
     string currentDateTimeText()
@@ -462,20 +546,7 @@ void checkoutOrder(
     cout << "\n1. Confirm Order\n";
     cout << "2. Cancel\n";
 
-    cout << "\nEnter Choice : ";
-
-    while (!(cin >> confirmChoice)
-        || confirmChoice < 1
-        || confirmChoice > 2)
-    {
-        cin.clear();
-
-        cin.ignore(1000, '\n');
-
-        displayError("Invalid choice.");
-        margin();
-        cout << "Enter again : ";
-    }
+    readOrderChoice("Enter Choice : ", confirmChoice, 1, 2);
 
     if (confirmChoice == 1)
     {
@@ -734,17 +805,7 @@ void addProductToCart(
         cout << "Available Stock : "
             << stockQty << endl;
 
-        cout << "\nEnter Quantity : ";
-
-        while (!(cin >> quantity) || quantity <= 0)
-        {
-            cin.clear();
-
-            cin.ignore(1000, '\n');
-
-            displayError("Invalid quantity.");
-            cout << "\nEnter again : ";
-        }
+        readPositiveQuantity(quantity);
 
         if (quantity > stockQty)
         {
@@ -824,25 +885,7 @@ void orderManagementMenu(sql::Connection* con)
 
         cout << "\n";
 
-        margin();
-        cout << "Enter Choice : ";
-
-        while (!(cin >> choice) || choice < 1 || choice > 7)
-        {
-            cin.clear();
-            cin.ignore(1000, '\n');
-
-            margin();
-            cout << "\nInvalid input!";
-
-            margin();
-            cout << "\nPlease enter a number between 1 - 7.";
-
-            cout << "\n\n";
-
-            margin();
-            cout << "Enter Choice : ";
-        }
+        readOrderChoice("Enter Choice : ", choice, 1, 7);
 
         switch (choice)
         {
@@ -900,8 +943,7 @@ void orderManagementMenu(sql::Connection* con)
 
         default:
 
-            margin();
-            cout << "\nInvalid option!\n";
+            displayError("Invalid choice.");
 
             pauseScreen();
         }
@@ -1022,27 +1064,7 @@ void createOrder(sql::Connection* con)
 
             cout << "\n";
 
-            margin();
-            cout << "Enter Choice : ";
-
-            while (!(cin >> choice)
-                || choice < 1
-                || choice > 4)
-            {
-                cin.clear();
-
-                cin.ignore(
-                    1000,
-                    '\n'
-                );
-
-                displayError(
-                    "Invalid choice."
-                );
-
-                margin();
-                cout << "Enter Choice : ";
-            }
+            readOrderChoice("Enter Choice : ", choice, 1, 4);
 
             switch (choice)
             {
@@ -1323,21 +1345,7 @@ void processPayment(sql::Connection* con)
 
         cout << "\n";
 
-        margin();
-        cout << "Enter Payment Method : ";
-
-        while (!(cin >> paymentChoice)
-            || paymentChoice < 1
-            || paymentChoice > 4)
-        {
-            cin.clear();
-            cin.ignore(1000, '\n');
-
-            displayError("Invalid payment method.");
-
-            margin();
-            cout << "Enter Payment Method : ";
-        }
+        readOrderChoice("Enter Payment Method : ", paymentChoice, 1, 4);
 
         switch (paymentChoice)
         {
@@ -1362,11 +1370,10 @@ void processPayment(sql::Connection* con)
 
         cout << "\n";
 
-        margin();
-        cout << "Confirm Payment? (Y/N): ";
-        cin >> confirm;
+        confirm =
+            readOrderConfirmation("Confirm Payment?");
 
-        if (toupper(confirm) != 'Y')
+        if (confirm != 'Y')
         {
             displayInfo("Operation cancelled.");
             return;
@@ -1737,20 +1744,7 @@ void cancelOrder(sql::Connection* con)
         cout << "\n1. Confirm Cancel\n";
         cout << "2. Back\n";
 
-        cout << "\nEnter Choice : ";
-
-        while (!(cin >> choice)
-            || choice < 1
-            || choice > 2)
-        {
-            cin.clear();
-
-            cin.ignore(1000, '\n');
-
-            displayError("Invalid choice.");
-            margin();
-            cout << "Enter again : ";
-        }
+        readOrderChoice("Enter Choice : ", choice, 1, 2);
 
         if (choice == 2)
         {
@@ -2038,20 +2032,7 @@ void restoreOrder(sql::Connection* con)
         margin();
         cout << "2. Back\n";
 
-        cout << "\nEnter Choice : ";
-
-        while (!(cin >> choice)
-            || choice < 1
-            || choice > 2)
-        {
-            cin.clear();
-
-            cin.ignore(1000, '\n');
-
-            displayError("Invalid choice.");
-            margin();
-            cout << "Enter again : ";
-        }
+        readOrderChoice("Enter Choice : ", choice, 1, 2);
 
         if (choice == 2)
         {

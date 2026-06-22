@@ -226,6 +226,15 @@ namespace
         printTableLine(width);
     }
 
+    bool parseInt(string input, int& value)
+    {
+        istringstream stream(input);
+        char extra;
+
+        return (stream >> value) &&
+            !(stream >> extra);
+    }
+
     bool readChoice(
         string prompt,
         int& choice,
@@ -233,15 +242,15 @@ namespace
         int maxValue
     )
     {
-        printPrompt(prompt);
+        string input;
 
-        while (!(cin >> choice) ||
+        printPrompt(prompt);
+        cin >> input;
+
+        while (!parseInt(input, choice) ||
             choice < minValue ||
             choice > maxValue)
         {
-            cin.clear();
-            discardLine();
-
             displayError(
                 "Please enter a number between " +
                 to_string(minValue) +
@@ -252,9 +261,8 @@ namespace
 
             cout << "\n";
             printPrompt(prompt);
+            cin >> input;
         }
-
-        discardLine();
 
         return true;
     }

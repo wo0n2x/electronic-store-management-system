@@ -248,8 +248,7 @@ int main()
 
         default:
 
-            margin();
-            cout << "\n[ERROR] Invalid choice!\n";
+            displayError("Invalid choice.");
 
             break;
         }

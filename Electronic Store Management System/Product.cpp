@@ -169,30 +169,69 @@ namespace
             !(stream >> extra);
     }
 
+    bool parseDouble(string input, double& value)
+    {
+        istringstream stream(input);
+        char extra;
+
+        return (stream >> value) &&
+            !(stream >> extra);
+    }
+
+    bool parseInt(string input, int& value)
+    {
+        istringstream stream(input);
+        char extra;
+
+        return (stream >> value) &&
+            !(stream >> extra);
+    }
+
 
 
     bool confirmAction(string prompt)
     {
-        char confirm;
+        string input;
 
-        printPrompt(prompt + " (Y/N): ");
-        cin >> confirm;
-        discardLine();
+        while (true)
+        {
+            printPrompt(prompt + " (Y/N): ");
+            cin >> input;
+            discardLine();
 
-        return toupper(confirm) == 'Y';
+            if (input.length() == 1)
+            {
+                char confirm =
+                    static_cast<char>(
+                        toupper(static_cast<unsigned char>(input[0]))
+                    );
+
+                if (confirm == 'Y')
+                {
+                    return true;
+                }
+
+                if (confirm == 'N')
+                {
+                    return false;
+                }
+            }
+
+            displayError("Please enter Y or N.");
+        }
     }
 
     bool readChoice(string prompt, int& choice, int minValue, int maxValue)
     {
-        printPrompt(prompt);
+        string input;
 
-        while (!(cin >> choice) ||
+        printPrompt(prompt);
+        cin >> input;
+
+        while (!parseInt(input, choice) ||
             choice < minValue ||
             choice > maxValue)
         {
-            cin.clear();
-            discardLine();
-
             displayError(
                 "Please enter a number between " +
                 to_string(minValue) +
@@ -202,6 +241,7 @@ namespace
             );
 
             printPrompt(prompt);
+            cin >> input;
         }
 
         discardLine();
@@ -213,12 +253,14 @@ namespace
     {
         printPrompt(prompt);
         getline(cin, value);
+        value = trimInput(value);
 
         while (value.empty())
         {
             displayError("This field cannot be empty.");
             printPrompt(prompt);
             getline(cin, value);
+            value = trimInput(value);
         }
     }
 
@@ -242,18 +284,17 @@ namespace
 
     bool readPositiveDouble(string prompt, double& value)
     {
+        string input;
+
         printPrompt(prompt);
+        getline(cin, input);
 
-        while (!(cin >> value) || value <= 0)
+        while (!parseDouble(input, value) || value <= 0)
         {
-            cin.clear();
-            discardLine();
-
             displayError("Please enter a valid amount greater than 0.");
             printPrompt(prompt);
+            getline(cin, input);
         }
-
-        discardLine();
 
         return true;
     }
@@ -273,24 +314,6 @@ namespace
         }
 
         return true;
-    }
-
-    bool parseDouble(string input, double& value)
-    {
-        istringstream stream(input);
-        char extra;
-
-        return (stream >> value) &&
-            !(stream >> extra);
-    }
-
-    bool parseInt(string input, int& value)
-    {
-        istringstream stream(input);
-        char extra;
-
-        return (stream >> value) &&
-            !(stream >> extra);
     }
 
     bool categoryExists(sql::Connection* con, int categoryID)
@@ -366,21 +389,19 @@ namespace
 
     int readValidCategory(sql::Connection* con, string prompt)
     {
+        string input;
         int categoryID;
 
         printPrompt(prompt);
+        getline(cin, input);
 
-        while (!(cin >> categoryID) ||
+        while (!parseInt(input, categoryID) ||
             !categoryExists(con, categoryID))
         {
-            cin.clear();
-            discardLine();
-
             displayError("Please select an existing category ID.");
             printPrompt(prompt);
+            getline(cin, input);
         }
-
-        discardLine();
 
         return categoryID;
     }

@@ -90,6 +90,60 @@ namespace
 
         return res->next();
     }
+
+    bool readStaffChoice(int& choice)
+    {
+        string input;
+
+        cin >> input;
+
+        if (input.empty())
+        {
+            return false;
+        }
+
+        choice = 0;
+
+        for (char character : input)
+        {
+            if (!isdigit(static_cast<unsigned char>(character)))
+            {
+                return false;
+            }
+
+            choice =
+                choice * 10 +
+                (character - '0');
+        }
+
+        return true;
+    }
+
+    char readStaffConfirmation(string prompt)
+    {
+        string input;
+
+        while (true)
+        {
+            printStaffPrompt(prompt + " (Y/N): ");
+            cin >> input;
+
+            if (input.length() == 1)
+            {
+                char confirm =
+                    static_cast<char>(
+                        toupper(static_cast<unsigned char>(input[0]))
+                    );
+
+                if (confirm == 'Y' || confirm == 'N')
+                {
+                    return confirm;
+                }
+            }
+
+            displayError("Please enter Y or N.");
+        }
+    }
 }
 
 // =====================================
@@ -623,10 +677,10 @@ void deleteStaff(sql::Connection* con)
 
         displayWarning("This staff will become inactive.");
         cout << "\n";
-        printStaffPrompt("Deactivate this staff? (Y/N): ");
-        cin >> confirm;
+        confirm =
+            readStaffConfirmation("Deactivate this staff?");
 
-        if (toupper(confirm) != 'Y')
+        if (confirm != 'Y')
         {
             displayInfo("Operation cancelled.");
 
@@ -797,10 +851,10 @@ void restoreStaff(sql::Connection* con)
 
         cout << "\n";
 
-        printStaffPrompt("Restore this staff? (Y/N): ");
-        cin >> confirm;
+        confirm =
+            readStaffConfirmation("Restore this staff?");
 
-        if (toupper(confirm) != 'Y')
+        if (confirm != 'Y')
         {
             displayInfo("Restore cancelled.");
 
@@ -867,13 +921,10 @@ void staffManagementMenu(sql::Connection* con)
 
         margin();
         cout << "Enter Choice : ";
-        cin >> choice;
-
-        if (cin.fail())
+        if (!readStaffChoice(choice) ||
+            choice < 1 ||
+            choice > 6)
         {
-            cin.clear();
-            cin.ignore(1000, '\n');
-
             displayError(
                 "Invalid choice. Please enter a number between 1 and 6."
             );
