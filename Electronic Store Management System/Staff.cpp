@@ -8,8 +8,90 @@
 #include <regex>
 #include <cctype>
 #include <iomanip>
+#include <memory>
 
 using namespace std;
+
+namespace
+{
+    void printStaffPrompt(string prompt)
+    {
+        margin();
+        cout << prompt;
+    }
+
+    void printStaffLine(int width)
+    {
+        printTableLine(width);
+    }
+
+    string trimInput(string value)
+    {
+        size_t first =
+            value.find_first_not_of(" \t\n\r\f\v");
+
+        if (first == string::npos)
+        {
+            return "";
+        }
+
+        size_t last =
+            value.find_last_not_of(" \t\n\r\f\v");
+
+        return value.substr(first, last - first + 1);
+    }
+
+    void printStaffStatusField(string status, int width)
+    {
+        int padding =
+            width - static_cast<int>(status.length());
+
+        if (padding < 0)
+        {
+            padding = 0;
+        }
+
+        printStatus(status);
+        cout << string(padding, ' ');
+    }
+
+    bool staffEmailExists(
+        sql::Connection* con,
+        string email,
+        string excludedStaffID = ""
+    )
+    {
+        string query =
+            "SELECT StaffID "
+            "FROM STAFF "
+            "WHERE Email=? ";
+
+        if (!excludedStaffID.empty())
+        {
+            query += "AND StaffID<>? ";
+        }
+
+        query += "LIMIT 1";
+
+        unique_ptr<sql::PreparedStatement> pstmt(
+            con->prepareStatement(query)
+        );
+
+        pstmt->setString(1, email);
+
+        if (!excludedStaffID.empty())
+        {
+            pstmt->setString(2, excludedStaffID);
+        }
+
+        unique_ptr<sql::ResultSet> res(
+            pstmt->executeQuery()
+        );
+
+        return res->next();
+    }
+}
+
 // =====================================
 // Generate Staff ID
 // =====================================
@@ -60,9 +142,7 @@ string generateStaffID(sql::Connection* con)
     }
     catch (sql::SQLException& e)
     {
-        cout << "\n[ERROR] "
-            << e.what()
-            << endl;
+        displayError(e.what());
 
         return "S001";
     }
@@ -75,7 +155,8 @@ string generateStaffID(sql::Connection* con)
 
 bool isValidPassword(string password)
 {
-    return password.length() >= 4;
+    return !trimInput(password).empty() &&
+        password.length() >= 6;
 }
 
 // =====================================
@@ -92,7 +173,7 @@ void displayStaffList(sql::Connection* con)
         stmt = con->createStatement();
 
         res = stmt->executeQuery(
-            "SELECT StaffID, StaffName "
+            "SELECT StaffID, StaffName, Status "
             "FROM STAFF "
             "WHERE Status='ACTIVE' "
             "ORDER BY StaffID"
@@ -100,17 +181,18 @@ void displayStaffList(sql::Connection* con)
 
         cout << "\n";
 
-        margin();
-        cout << "============================================================\n";
+        displaySection("ACTIVE STAFF");
 
         margin();
+        setTableHeaderColor();
         cout << left
-            << setw(15) << "STAFF ID"
-            << setw(35) << "STAFF NAME"
+            << setw(15) << "Staff ID"
+            << setw(30) << "Staff Name"
+            << setw(15) << "Status"
             << endl;
+        resetTextColor();
 
-        margin();
-        cout << "============================================================\n";
+        printStaffLine(60);
 
         int count = 0;
 
@@ -120,14 +202,14 @@ void displayStaffList(sql::Connection* con)
 
             cout << left
                 << setw(15) << res->getString("StaffID")
-                << setw(35) << res->getString("StaffName")
-                << endl;
+                << setw(30) << res->getString("StaffName");
+            printStaffStatusField(res->getString("Status"), 15);
+            cout << endl;
 
             count++;
         }
 
-        margin();
-        cout << "============================================================\n";
+        printStaffLine(60);
 
         margin();
         cout << "Total Active Staff : "
@@ -139,11 +221,7 @@ void displayStaffList(sql::Connection* con)
     }
     catch (sql::SQLException& e)
     {
-        margin();
-
-        cout << "[ERROR] "
-            << e.what()
-            << endl;
+        displayError(e.what());
     }
 }
 
@@ -154,7 +232,8 @@ void displayStaffList(sql::Connection* con)
 void addStaff(sql::Connection* con)
 {
     displayHeader("ADD STAFF");
-    displayPath("   HOME > STAFF MANAGEMENT > ADD STAFF");
+    displayPath("HOME > STAFF MANAGEMENT > ADD STAFF");
+    displaySection("STAFF DETAILS");
 
     string staffID = generateStaffID(con);
 
@@ -164,79 +243,59 @@ void addStaff(sql::Connection* con)
 
     cin.ignore();
 
-    // Staff Name
-    margin();
-    cout << "Enter Staff Name : ";
-    getline(cin, name);
-
-    while (!isValidName(name))
-    {
-        margin();
-        cout << "[ERROR] Name must contain letters only.\n";
-
-        margin();
-        cout << "Enter Staff Name : ";
-        getline(cin, name);
-    }
-
-    // Email
-    margin();
-    cout << "Enter Email      : ";
-    getline(cin, email);
-
-    while (!isValidEmail(email))
-    {
-        margin();
-        cout << "[ERROR] Invalid email format.\n";
-
-        margin();
-        cout << "Enter Email      : ";
-        getline(cin, email);
-    }
-
-    // Password
-    margin();
-    cout << "Enter Password   : ";
-    getline(cin, password);
-
-    while (!isValidPassword(password))
-    {
-        margin();
-        cout << "[ERROR] Password must be at least 4 characters.\n";
-
-        margin();
-        cout << "Enter Password   : ";
-        getline(cin, password);
-    }
-
     try
     {
-        sql::PreparedStatement* pstmt;
-        sql::ResultSet* res;
+        // Staff Name
+        printStaffPrompt("Enter Staff Name : ");
+        getline(cin, name);
+        name = trimInput(name);
 
-        // Check duplicate email
-        pstmt = con->prepareStatement(
-            "SELECT * FROM STAFF "
-            "WHERE Email=?"
-        );
-
-        pstmt->setString(1, email);
-
-        res = pstmt->executeQuery();
-
-        if (res->next())
+        while (!isValidName(name))
         {
-            margin();
-            cout << "[ERROR] Email already exists!\n";
+            displayError("Name must contain letters only.");
 
-            delete res;
-            delete pstmt;
-
-            return;
+            printStaffPrompt("Enter Staff Name : ");
+            getline(cin, name);
+            name = trimInput(name);
         }
 
-        delete res;
-        delete pstmt;
+        // Email
+        printStaffPrompt("Enter Email      : ");
+        getline(cin, email);
+        email = trimInput(email);
+
+        while (!isValidEmail(email) ||
+            staffEmailExists(con, email))
+        {
+            if (!isValidEmail(email))
+            {
+                displayError("Invalid email format.");
+            }
+            else
+            {
+                displayError(
+                    "Email already exists. Please enter a different email."
+                );
+            }
+
+            printStaffPrompt("Enter Email      : ");
+            getline(cin, email);
+            email = trimInput(email);
+        }
+
+        // Password
+        printStaffPrompt("Enter Password   : ");
+        getline(cin, password);
+
+        while (!isValidPassword(password))
+        {
+            displayError("Password must be at least 6 characters.");
+
+            printStaffPrompt("Enter Password   : ");
+            getline(cin, password);
+        }
+
+        sql::PreparedStatement* pstmt;
 
         // Insert Staff
         pstmt = con->prepareStatement(
@@ -252,8 +311,7 @@ void addStaff(sql::Connection* con)
 
         pstmt->executeUpdate();
 
-        margin();
-        cout << "\n[SUCCESS] Staff added successfully!\n";
+        displaySuccess("Staff added successfully.");
 
         margin();
         cout << "Staff ID : "
@@ -264,11 +322,7 @@ void addStaff(sql::Connection* con)
     }
     catch (sql::SQLException& e)
     {
-        margin();
-
-        cout << "[ERROR] "
-            << e.what()
-            << endl;
+        displayError(e.what());
     }
 }
 
@@ -279,8 +333,8 @@ void addStaff(sql::Connection* con)
 
 void viewStaff(sql::Connection* con)
 {
-    displayHeader("                   VIEW STAFF");
-    displayPath("   HOME > STAFF MANAGEMENT > VIEW STAFF");
+    displayHeader("VIEW STAFF");
+    displayPath("HOME > STAFF MANAGEMENT > VIEW STAFF");
 
     try
     {
@@ -296,18 +350,16 @@ void viewStaff(sql::Connection* con)
         );
 
         margin();
-        cout << "========================================================================\n";
-
-        margin();
+        setTableHeaderColor();
         cout << left
-            << setw(12) << "STAFF ID"
-            << setw(25) << "STAFF NAME"
-            << setw(30) << "EMAIL"
-            << setw(12) << "STATUS"
+            << setw(12) << "Staff ID"
+            << setw(25) << "Staff Name"
+            << setw(35) << "Email"
+            << setw(15) << "Status"
             << endl;
+        resetTextColor();
 
-        margin();
-        cout << "========================================================================\n";
+        printStaffLine(87);
 
         int count = 0;
 
@@ -318,17 +370,14 @@ void viewStaff(sql::Connection* con)
             cout << left
                 << setw(12) << res->getString("StaffID")
                 << setw(25) << res->getString("StaffName")
-                << setw(30) << res->getString("Email")
-                << setw(12) << res->getString("Status")
-                << endl;
+                << setw(35) << res->getString("Email");
+            printStaffStatusField(res->getString("Status"), 15);
+            cout << endl;
 
             count++;
         }
 
-        margin();
-        cout << "========================================================================\n";
-
-        cout << "\n";
+        printStaffLine(87);
 
         margin();
         cout << "Total Active Staff : "
@@ -340,11 +389,7 @@ void viewStaff(sql::Connection* con)
     }
     catch (sql::SQLException& e)
     {
-        margin();
-
-        cout << "[ERROR] "
-            << e.what()
-            << endl;
+        displayError(e.what());
     }
 }
 
@@ -364,8 +409,14 @@ void updateStaff(sql::Connection* con)
     cout << "\n";
 
     margin();
-    cout << "Enter Staff ID (SXXX): ";
+    cout << "Enter Staff ID (0 to cancel): ";
     cin >> staffID;
+
+    if (staffID == "0")
+    {
+        displayInfo("Update cancelled.");
+        return;
+    }
 
     try
     {
@@ -384,8 +435,7 @@ void updateStaff(sql::Connection* con)
 
         if (!res->next())
         {
-            margin();
-            cout << "[ERROR] Staff not found!\n";
+            displayError("Staff not found.");
 
             delete res;
             delete pstmt;
@@ -412,29 +462,25 @@ void updateStaff(sql::Connection* con)
 
         cout << "\n";
 
-        margin();
-        cout << "Current Staff Information\n\n";
+        displaySection("CURRENT STAFF INFORMATION");
 
         margin();
-        cout << "Name     : "
-            << currentName
-            << " (READ ONLY)\n";
+        cout << left << setw(12) << "Name" << ": "
+            << currentName << " (READ ONLY)" << endl;
 
         margin();
-        cout << "Email    : "
-            << currentEmail
-            << endl;
+        cout << left << setw(12) << "Email" << ": "
+            << currentEmail << endl;
 
         margin();
-        cout << "Password : "
-            << currentPassword
-            << endl;
+        cout << left << setw(12) << "Password" << ": "
+            << currentPassword << endl;
 
         cout << "\n";
 
-        margin();
-        cout << "New Email (Press Enter to keep current): ";
+        printStaffPrompt("New Email (Press Enter to keep current): ");
         getline(cin, newEmail);
+        newEmail = trimInput(newEmail);
 
         if (newEmail.empty())
         {
@@ -442,47 +488,27 @@ void updateStaff(sql::Connection* con)
         }
         else
         {
-            while (!isValidEmail(newEmail))
+            while (!isValidEmail(newEmail) ||
+                staffEmailExists(con, newEmail, staffID))
             {
-                margin();
-                cout << "[ERROR] Invalid email format.\n";
+                if (!isValidEmail(newEmail))
+                {
+                    displayError("Invalid email format.");
+                }
+                else
+                {
+                    displayError(
+                        "Email already exists. Please enter a different email."
+                    );
+                }
 
-                margin();
-                cout << "New Email : ";
+                printStaffPrompt("New Email : ");
                 getline(cin, newEmail);
+                newEmail = trimInput(newEmail);
             }
-
-            sql::PreparedStatement* checkStmt;
-            sql::ResultSet* checkRes;
-
-            checkStmt = con->prepareStatement(
-                "SELECT * FROM STAFF "
-                "WHERE Email=? "
-                "AND StaffID<>?"
-            );
-
-            checkStmt->setString(1, newEmail);
-            checkStmt->setString(2, staffID);
-
-            checkRes = checkStmt->executeQuery();
-
-            if (checkRes->next())
-            {
-                margin();
-                cout << "[ERROR] Email already exists!\n";
-
-                delete checkRes;
-                delete checkStmt;
-
-                return;
-            }
-
-            delete checkRes;
-            delete checkStmt;
         }
 
-        margin();
-        cout << "New Password (Press Enter to keep current): ";
+        printStaffPrompt("New Password (Press Enter to keep current): ");
         getline(cin, newPassword);
 
         if (newPassword.empty())
@@ -493,11 +519,9 @@ void updateStaff(sql::Connection* con)
         {
             while (!isValidPassword(newPassword))
             {
-                margin();
-                cout << "[ERROR] Password must be at least 4 characters.\n";
+                displayError("Password must be at least 6 characters.");
 
-                margin();
-                cout << "New Password : ";
+                printStaffPrompt("New Password : ");
                 getline(cin, newPassword);
             }
         }
@@ -515,20 +539,13 @@ void updateStaff(sql::Connection* con)
 
         pstmt->executeUpdate();
 
-        cout << "\n";
-
-        margin();
-        cout << "[SUCCESS] Staff updated successfully!\n";
+        displaySuccess("Staff updated successfully.");
 
         delete pstmt;
     }
     catch (sql::SQLException& e)
     {
-        margin();
-
-        cout << "\n[ERROR] "
-            << e.what()
-            << endl;
+        displayError(e.what());
     }
 }
 // =====================================
@@ -540,16 +557,22 @@ void deleteStaff(sql::Connection* con)
     string staffID;
     char confirm;
 
-    displayHeader("                 DELETE STAFF");
-    displayPath("   HOME > STAFF MANAGEMENT > DELETE STAFF");
+    displayHeader("DELETE STAFF");
+    displayPath("HOME > STAFF MANAGEMENT > DELETE STAFF");
 
     displayStaffList(con);
 
     cout << "\n";
 
     margin();
-    cout << "Enter Staff ID (SXXX): ";
+    cout << "Enter Staff ID (0 to cancel): ";
     cin >> staffID;
+
+    if (staffID == "0")
+    {
+        displayInfo("Delete cancelled.");
+        return;
+    }
 
     try
     {
@@ -568,8 +591,7 @@ void deleteStaff(sql::Connection* con)
 
         if (!res->next())
         {
-            margin();
-            cout << "[ERROR] Staff not found!\n";
+            displayError("Staff not found.");
 
             delete res;
             delete pstmt;
@@ -577,53 +599,36 @@ void deleteStaff(sql::Connection* con)
             return;
         }
 
-        cout << "\n";
+        displaySection("STAFF DETAILS");
 
         margin();
-        cout << "============================================================\n";
+        cout << left << setw(12) << "Staff ID" << ": "
+            << res->getString("StaffID") << endl;
 
         margin();
-        cout << "Staff Information\n";
+        cout << left << setw(12) << "Name" << ": "
+            << res->getString("StaffName") << endl;
 
         margin();
-        cout << "============================================================\n";
+        cout << left << setw(12) << "Email" << ": "
+            << res->getString("Email") << endl;
 
         margin();
-        cout << "Staff ID : "
-            << res->getString("StaffID")
-            << endl;
-
-        margin();
-        cout << "Name     : "
-            << res->getString("StaffName")
-            << endl;
-
-        margin();
-        cout << "Email    : "
-            << res->getString("Email")
-            << endl;
-
-        margin();
-        cout << "Status   : "
-            << res->getString("Status")
-            << endl;
-
-        margin();
-        cout << "============================================================\n";
+        cout << left << setw(12) << "Status" << ": ";
+        printStatus(res->getString("Status"));
+        cout << endl;
 
         delete res;
         delete pstmt;
 
+        displayWarning("This staff will become inactive.");
         cout << "\n";
-
-        margin();
-        cout << "Deactivate this staff? (Y/N): ";
+        printStaffPrompt("Deactivate this staff? (Y/N): ");
         cin >> confirm;
 
         if (toupper(confirm) != 'Y')
         {
-            margin();
-            cout << "\n[INFO] Operation cancelled.\n";
+            displayInfo("Operation cancelled.");
 
             return;
         }
@@ -638,18 +643,13 @@ void deleteStaff(sql::Connection* con)
 
         pstmt->executeUpdate();
 
-        margin();
-        cout << "\n[SUCCESS] Staff deactivated successfully!\n";
+        displaySuccess("Staff deactivated successfully.");
 
         delete pstmt;
     }
     catch (sql::SQLException& e)
     {
-        margin();
-
-        cout << "\n[ERROR] "
-            << e.what()
-            << endl;
+        displayError(e.what());
     }
 }
 
@@ -667,7 +667,7 @@ void viewInactiveStaff(sql::Connection* con)
         stmt = con->createStatement();
 
         res = stmt->executeQuery(
-            "SELECT StaffID, StaffName "
+            "SELECT StaffID, StaffName, Status "
             "FROM STAFF "
             "WHERE Status='INACTIVE' "
             "ORDER BY StaffID"
@@ -675,23 +675,18 @@ void viewInactiveStaff(sql::Connection* con)
 
         cout << "\n";
 
-        margin();
-        cout << "============================================================\n";
+        displaySection("INACTIVE STAFF");
 
         margin();
-        cout << "INACTIVE STAFF LIST\n";
-
-        margin();
-        cout << "============================================================\n";
-
-        margin();
+        setTableHeaderColor();
         cout << left
-            << setw(15) << "STAFF ID"
-            << setw(35) << "STAFF NAME"
+            << setw(15) << "Staff ID"
+            << setw(30) << "Staff Name"
+            << setw(15) << "Status"
             << endl;
+        resetTextColor();
 
-        margin();
-        cout << "============================================================\n";
+        printStaffLine(60);
 
         int count = 0;
 
@@ -701,14 +696,14 @@ void viewInactiveStaff(sql::Connection* con)
 
             cout << left
                 << setw(15) << res->getString("StaffID")
-                << setw(35) << res->getString("StaffName")
-                << endl;
+                << setw(30) << res->getString("StaffName");
+            printStaffStatusField(res->getString("Status"), 15);
+            cout << endl;
 
             count++;
         }
 
-        margin();
-        cout << "============================================================\n";
+        printStaffLine(60);
 
         margin();
         cout << "Total Inactive Staff : "
@@ -720,11 +715,7 @@ void viewInactiveStaff(sql::Connection* con)
     }
     catch (sql::SQLException& e)
     {
-        margin();
-
-        cout << "\n[ERROR] "
-            << e.what()
-            << endl;
+        displayError(e.what());
     }
 }
 
@@ -737,8 +728,8 @@ void restoreStaff(sql::Connection* con)
 {
     clearScreen();
 
-    displayHeader("                 RESTORE STAFF");
-    displayPath("   HOME > STAFF MANAGEMENT > RESTORE STAFF");
+    displayHeader("RESTORE STAFF");
+    displayPath("HOME > STAFF MANAGEMENT > RESTORE STAFF");
 
     viewInactiveStaff(con);
 
@@ -748,8 +739,14 @@ void restoreStaff(sql::Connection* con)
     cout << "\n";
 
     margin();
-    cout << "Enter Staff ID (SXXX): ";
+    cout << "Enter Staff ID (0 to cancel): ";
     cin >> staffID;
+
+    if (staffID == "0")
+    {
+        displayInfo("Restore cancelled.");
+        return;
+    }
 
     try
     {
@@ -768,8 +765,7 @@ void restoreStaff(sql::Connection* con)
 
         if (!res->next())
         {
-            margin();
-            cout << "[ERROR] Inactive staff not found!\n";
+            displayError("Inactive staff not found.");
 
             delete res;
             delete pstmt;
@@ -777,53 +773,36 @@ void restoreStaff(sql::Connection* con)
             return;
         }
 
-        cout << "\n";
+        displaySection("STAFF DETAILS");
 
         margin();
-        cout << "============================================================\n";
+        cout << left << setw(12) << "Staff ID" << ": "
+            << res->getString("StaffID") << endl;
 
         margin();
-        cout << "Staff Information\n";
+        cout << left << setw(12) << "Name" << ": "
+            << res->getString("StaffName") << endl;
 
         margin();
-        cout << "============================================================\n";
+        cout << left << setw(12) << "Email" << ": "
+            << res->getString("Email") << endl;
 
         margin();
-        cout << "Staff ID : "
-            << res->getString("StaffID")
-            << endl;
-
-        margin();
-        cout << "Name     : "
-            << res->getString("StaffName")
-            << endl;
-
-        margin();
-        cout << "Email    : "
-            << res->getString("Email")
-            << endl;
-
-        margin();
-        cout << "Status   : "
-            << res->getString("Status")
-            << endl;
-
-        margin();
-        cout << "============================================================\n";
+        cout << left << setw(12) << "Status" << ": ";
+        printStatus(res->getString("Status"));
+        cout << endl;
 
         delete res;
         delete pstmt;
 
         cout << "\n";
 
-        margin();
-        cout << "Restore this staff? (Y/N): ";
+        printStaffPrompt("Restore this staff? (Y/N): ");
         cin >> confirm;
 
         if (toupper(confirm) != 'Y')
         {
-            margin();
-            cout << "\n[INFO] Restore cancelled.\n";
+            displayInfo("Restore cancelled.");
 
             return;
         }
@@ -838,18 +817,13 @@ void restoreStaff(sql::Connection* con)
 
         pstmt->executeUpdate();
 
-        margin();
-        cout << "\n[SUCCESS] Staff restored successfully!\n";
+        displaySuccess("Staff restored successfully.");
 
         delete pstmt;
     }
     catch (sql::SQLException& e)
     {
-        margin();
-
-        cout << "\n[ERROR] "
-            << e.what()
-            << endl;
+        displayError(e.what());
     }
 }
 
@@ -868,31 +842,31 @@ void staffManagementMenu(sql::Connection* con)
     {
         clearScreen();
 
-        displayHeader("               STAFF MANAGEMENT");
-        displayPath("   HOME > STAFF MANAGEMENT");
+        displayHeader("STAFF MANAGEMENT");
+        displayPath("HOME > STAFF MANAGEMENT");
 
         margin();
-        cout << "[1] Add Staff\n";
+        cout << "1. Add Staff\n";
 
         margin();
-        cout << "[2] Update Staff\n";
+        cout << "2. Update Staff\n";
 
         margin();
-        cout << "[3] Delete Staff\n";
+        cout << "3. Delete Staff\n";
 
         margin();
-        cout << "[4] Restore Staff\n";
+        cout << "4. Restore Staff\n";
 
         margin();
-        cout << "[5] View Staff\n";
+        cout << "5. View Staff\n";
 
         margin();
-        cout << "[6] Back\n";
+        cout << "6. Back\n";
 
         cout << "\n";
 
         margin();
-        cout << "Enter Choice: ";
+        cout << "Enter Choice : ";
         cin >> choice;
 
         if (cin.fail())
@@ -900,8 +874,9 @@ void staffManagementMenu(sql::Connection* con)
             cin.clear();
             cin.ignore(1000, '\n');
 
-            margin();
-            cout << "\n[ERROR] Invalid choice!\n";
+            displayError(
+                "Invalid choice. Please enter a number between 1 and 6."
+            );
 
             pauseScreen();
 
@@ -962,18 +937,14 @@ void staffManagementMenu(sql::Connection* con)
 
         case 6:
 
-            margin();
-            cout << "\nReturning to Main Menu...\n";
-
-           // loadingScreen();
-
             return;
 
 
         default:
 
-            margin();
-            cout << "\n[ERROR] Invalid choice!\n";
+            displayError(
+                "Invalid choice. Please enter a number between 1 and 6."
+            );
 
             pauseScreen();
         }

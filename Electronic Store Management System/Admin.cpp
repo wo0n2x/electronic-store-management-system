@@ -153,7 +153,7 @@ bool login(sql::Connection* con)
         delete res;
         delete pstmt;
 
-        cout << "\nInvalid Admin ID/Email or Password!\n";
+        displayError("Invalid Admin ID/Email or Password.");
         pauseScreen();
 
         return false;

@@ -6,6 +6,8 @@
 #include <string>
 #include <vector>
 #include <iomanip>
+#include <cctype>
+#include <ctime>
 
 #include <cppconn/prepared_statement.h>
 #include <cppconn/resultset.h>
@@ -33,6 +35,237 @@ namespace
 
         printStatus(status);
         cout << string(padding, ' ');
+    }
+
+    string currentDateTimeText()
+    {
+        time_t now =
+            time(nullptr);
+
+        tm localTime;
+        localtime_s(&localTime, &now);
+
+        stringstream stream;
+
+        stream << put_time(
+            &localTime,
+            "%Y-%m-%d %H:%M:%S"
+        );
+
+        return stream.str();
+    }
+
+    string generateReceiptNo(string orderID)
+    {
+        if (!orderID.empty() &&
+            isalpha(static_cast<unsigned char>(orderID[0])))
+        {
+            return "R" + orderID.substr(1);
+        }
+
+        return "R" + orderID;
+    }
+
+    string fitReceiptText(string text, int width)
+    {
+        if (static_cast<int>(text.length()) <= width)
+        {
+            return text;
+        }
+
+        if (width <= 3)
+        {
+            return text.substr(0, width);
+        }
+
+        return text.substr(0, width - 3) + "...";
+    }
+
+    string receiptMoneyText(double value)
+    {
+        stringstream stream;
+
+        stream << "RM "
+            << fixed
+            << setprecision(2)
+            << value;
+
+        return stream.str();
+    }
+
+    void printReceiptField(string label, string value)
+    {
+        margin();
+        cout << left
+            << setw(16) << label
+            << ": "
+            << value
+            << endl;
+    }
+
+    void printReceiptField(string label, double value)
+    {
+        printReceiptField(label, receiptMoneyText(value));
+    }
+
+    void printReceiptStatus(string status)
+    {
+        margin();
+        cout << left
+            << setw(16) << "Status"
+            << ": ";
+        printStatus(status);
+        cout << endl;
+    }
+
+    void displayReceiptProducts(
+        sql::Connection* con,
+        string orderID
+    )
+    {
+        sql::PreparedStatement* pstmt = nullptr;
+        sql::ResultSet* res = nullptr;
+
+        try
+        {
+            pstmt = con->prepareStatement(
+                "SELECT od.ProductID, "
+                "p.ProductName, "
+                "od.Quantity, "
+                "od.UnitPrice, "
+                "od.Subtotal "
+                "FROM ORDERDETAILS od "
+                "INNER JOIN PRODUCT p "
+                "ON od.ProductID = p.ProductID "
+                "WHERE od.OrderID = ? "
+                "ORDER BY od.ProductID"
+            );
+
+            pstmt->setString(1, orderID);
+
+            res = pstmt->executeQuery();
+
+            displaySection("PRODUCTS");
+
+            margin();
+            setTableHeaderColor();
+            cout << left
+                << setw(12) << "Product ID"
+                << setw(28) << "Product Name"
+                << setw(6) << "Qty"
+                << setw(14) << "Unit Price"
+                << setw(14) << "Subtotal"
+                << endl;
+            resetTextColor();
+
+            printOrderTableLine(74);
+
+            while (res->next())
+            {
+                margin();
+                cout << left
+                    << setw(12) << res->getString("ProductID")
+                    << setw(28)
+                    << fitReceiptText(
+                        res->getString("ProductName"),
+                        27
+                    )
+                    << setw(6) << res->getInt("Quantity")
+                    << setw(14)
+                    << receiptMoneyText(res->getDouble("UnitPrice"))
+                    << setw(14)
+                    << receiptMoneyText(res->getDouble("Subtotal"))
+                    << endl;
+            }
+
+            printOrderTableLine(74);
+
+            delete res;
+            delete pstmt;
+        }
+        catch (sql::SQLException& e)
+        {
+            delete res;
+            delete pstmt;
+
+            displayError(e.what());
+        }
+    }
+
+    void printReceiptGrandTotal(double amount)
+    {
+        cout << "\n";
+        margin();
+        cout << left
+            << setw(16) << "Grand Total"
+            << ": "
+            << receiptMoneyText(amount)
+            << endl;
+    }
+
+    void printReceiptSuccessBanner()
+    {
+        const int width = 58;
+        string message =
+            "PAYMENT PROCESSED SUCCESSFULLY";
+
+        int leftPadding =
+            (width - static_cast<int>(message.length())) / 2;
+
+        if (leftPadding < 0)
+        {
+            leftPadding = 0;
+        }
+
+        printOrderTableLine(width);
+
+        margin();
+        setSuccessColor();
+        cout << string(leftPadding, ' ')
+            << message
+            << endl;
+        resetTextColor();
+
+        printOrderTableLine(width);
+    }
+
+    void displayPaymentReceipt(
+        sql::Connection* con,
+        string orderID,
+        string customerID,
+        string paymentMethod,
+        double orderAmount,
+        string paymentDate
+    )
+    {
+        clearScreen();
+
+        displayHeader("PAYMENT RECEIPT");
+
+        cout << "\n";
+
+        printReceiptField(
+            "Receipt No",
+            generateReceiptNo(orderID)
+        );
+        printReceiptField("Order ID", orderID);
+        printReceiptField("Customer ID", customerID);
+        printReceiptField("Payment Method", paymentMethod);
+        printReceiptField("Payment Date", paymentDate);
+
+        cout << "\n";
+
+        printReceiptStatus("COMPLETED");
+
+        cout << "\n";
+
+        displayReceiptProducts(con, orderID);
+
+        printReceiptGrandTotal(orderAmount);
+
+        cout << "\n";
+
+        printReceiptSuccessBanner();
     }
 }
 
@@ -443,8 +676,14 @@ void addProductToCart(
     cout << "\n";
 
     margin();
-    cout << "Enter Product ID : ";
+    cout << "Enter Product ID (0 to cancel): ";
     cin >> productID;
+
+    if (productID == "0")
+    {
+        displayInfo("Add product cancelled.");
+        return;
+    }
     try
     {
         sql::PreparedStatement* pstmt;
@@ -692,8 +931,14 @@ void createOrder(sql::Connection* con)
     cout << "\n";
 
     margin();
-    cout << "Enter Customer ID : ";
+    cout << "Enter Customer ID (0 to cancel): ";
     cin >> customerID;
+
+    if (customerID == "0")
+    {
+        displayInfo("Create order cancelled.");
+        return;
+    }
 
 
     try
@@ -1014,8 +1259,18 @@ void processPayment(sql::Connection* con)
         cout << "\n";
 
         margin();
-        cout << "Enter Order ID : ";
+        cout << "Enter Order ID (0 to cancel): ";
         cin >> orderID;
+
+        if (orderID == "0")
+        {
+            displayInfo("Payment cancelled.");
+
+            delete res;
+            delete pstmt;
+
+            return;
+        }
 
         delete res;
         delete pstmt;
@@ -1039,6 +1294,12 @@ void processPayment(sql::Connection* con)
 
             return;
         }
+
+        string paymentCustomerID =
+            res->getString("CustomerID");
+
+        double paymentAmount =
+            res->getDouble("TotalAmount");
 
         delete res;
         delete pstmt;
@@ -1125,8 +1386,13 @@ void processPayment(sql::Connection* con)
 
         delete pstmt;
 
-        displaySuccess(
-            "PAYMENT PROCESSED SUCCESSFULLY"
+        displayPaymentReceipt(
+            con,
+            orderID,
+            paymentCustomerID,
+            paymentMethod,
+            paymentAmount,
+            currentDateTimeText()
         );
     }
     catch (sql::SQLException& e)
@@ -1152,8 +1418,14 @@ void searchOrder(sql::Connection* con)
 
     cout << "\n";
     margin();
-    cout << "Enter Order ID : ";
+    cout << "Enter Order ID (0 to cancel): ";
     cin >> orderID;
+
+    if (orderID == "0")
+    {
+        displayInfo("Search cancelled.");
+        return;
+    }
 
     try
     {
@@ -1377,9 +1649,15 @@ void cancelOrder(sql::Connection* con)
     cout << "\n";
 
     margin();
-    cout << "Enter Order ID : ";
+    cout << "Enter Order ID (0 to cancel): ";
 
     cin >> orderID;
+
+    if (orderID == "0")
+    {
+        displayInfo("Cancel order cancelled.");
+        return;
+    }
 
     try
     {
@@ -1622,8 +1900,14 @@ void restoreOrder(sql::Connection* con)
     cout << "\n";
 
     margin();
-    cout << "Enter Order ID : ";
+    cout << "Enter Order ID (0 to cancel): ";
     cin >> orderID;
+
+    if (orderID == "0")
+    {
+        displayInfo("Restore order cancelled.");
+        return;
+    }
 
 
     try

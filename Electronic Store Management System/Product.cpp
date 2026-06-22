@@ -1290,9 +1290,15 @@ void updateProduct(sql::Connection* con)
     );
 
     cout << "\n";
-    printPrompt("Enter Product ID : ");
+    printPrompt("Enter Product ID (0 to cancel): ");
     cin >> productID;
     discardLine();
+
+    if (productID == "0")
+    {
+        displayInfo("Update cancelled.");
+        return;
+    }
 
     try
     {
@@ -1607,9 +1613,15 @@ void deleteProduct(sql::Connection* con)
     );
 
     cout << "\n";
-    printPrompt("Enter Product ID : ");
+    printPrompt("Enter Product ID (0 to cancel): ");
     cin >> productID;
     discardLine();
+
+    if (productID == "0")
+    {
+        displayInfo("Delete cancelled.");
+        return;
+    }
 
     try
     {
@@ -1698,9 +1710,15 @@ void restoreProduct(sql::Connection* con)
     );
 
     cout << "\n";
-    printPrompt("Enter Product ID : ");
+    printPrompt("Enter Product ID (0 to cancel): ");
     cin >> productID;
     discardLine();
+
+    if (productID == "0")
+    {
+        displayInfo("Restore cancelled.");
+        return;
+    }
 
     try
     {
@@ -1779,9 +1797,15 @@ void searchProduct(sql::Connection* con)
     displayHeader("SEARCH PRODUCT");
     displayPath("HOME > PRODUCT MANAGEMENT > SEARCH PRODUCT");
 
-    printPrompt("Enter Product ID : ");
+    printPrompt("Enter Product ID (0 to cancel): ");
     cin >> productID;
     discardLine();
+
+    if (productID == "0")
+    {
+        displayInfo("Search cancelled.");
+        return;
+    }
 
     try
     {

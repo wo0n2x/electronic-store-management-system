@@ -506,8 +506,14 @@ void updateCustomer(sql::Connection* con)
 
     cout << "\n";
     margin();
-    cout << "Enter Customer ID (CXXX): ";
+    cout << "Enter Customer ID (0 to cancel): ";
     cin >> customerID;
+
+    if (customerID == "0")
+    {
+        displayInfo("Update cancelled.");
+        return;
+    }
 
     try
     {
@@ -667,8 +673,14 @@ void deleteCustomer(sql::Connection* con)
     displayCustomerList(con);
 
     cout << "\n";
-    printCustomerPrompt("Enter Customer ID: ");
+    printCustomerPrompt("Enter Customer ID (0 to cancel): ");
     cin >> customerID;
+
+    if (customerID == "0")
+    {
+        displayInfo("Delete cancelled.");
+        return;
+    }
 
     try
     {

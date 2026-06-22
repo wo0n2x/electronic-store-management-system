@@ -10,6 +10,8 @@
 #include "Staff.h"
 #include "Order.h"
 #include "Report.h"
+#include <cctype>
+#include <string>
 
 using namespace std;
 
@@ -17,8 +19,41 @@ const string server = "tcp://127.0.0.1:3306";
 const string username = "root";
 const string password = "";
 
+namespace
+{
+    bool readMenuChoice(int& choice)
+    {
+        string input;
 
+        cin >> input;
 
+        if (input.empty())
+        {
+            return false;
+        }
+
+        choice = 0;
+
+        for (char character : input)
+        {
+            if (!isdigit(static_cast<unsigned char>(character)))
+            {
+                return false;
+            }
+
+            choice =
+                choice * 10 +
+                (character - '0');
+
+            if (choice > 100)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+}
 
 int main()
 {
@@ -59,7 +94,9 @@ int main()
         clearScreen();
 
         displayHeader("ELECTRONIC STORE MANAGEMENT SYSTEM");
-
+        displayPath(
+            "HOME"
+        );
         margin();
         cout << "1. Customer Management\n";
 
@@ -97,37 +134,24 @@ int main()
             margin();
             cout << "Enter your choice (1-6): ";
         }
-        cin >> choice;
+        int maxChoice =
+            isAdmin ? 7 : 6;
 
-        if (cin.fail())
+        if (!readMenuChoice(choice) ||
+            choice < 1 ||
+            choice > maxChoice)
         {
-            cin.clear();
-            cin.ignore(1000, '\n');
+            displayError(
+                "Invalid choice. Please enter a number between 1 and " +
+                to_string(maxChoice) +
+                "."
+            );
 
-            margin();
-            cout << "Invalid choice!\n";
+            pauseScreen();
 
             continue;
         }
 
-        if (isAdmin)
-        {
-            if (choice < 1 || choice > 7)
-            {
-                margin();
-                cout << "Invalid choice!\n";
-                continue;
-            }
-        }
-        else
-        {
-            if (choice < 1 || choice > 6)
-            {
-                margin();
-                cout << "Invalid choice!\n";
-                continue;
-            }
-        }
         switch (choice)
         {
         case 1:
